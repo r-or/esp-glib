@@ -3,20 +3,15 @@
 #include "driver/spi.h"
 #include "user_interface.h"
 
-#ifdef FONT_HANKEN_LIGHT_20
-#include "hanken_light_20.h"
-#endif
-#ifdef FONT_HANKEN_LIGHT_19
-#include "hanken_light_19.h"
-#endif
-#ifdef FONT_HANKEN_LIGHT_13
-#include "hanken_light_13.h"
-#endif
+#define XSTR(x) STR(x)  // convert #define into string
+#define STR(x) #x
 
 struct ssd1322_chars_in_fb {
     uint8_t chars[SSD1322_MAX_CHARS];
     uint8_t *last_char;
 };
+
+#pragma message "ssd1322 max char buffer size: " XSTR(SSD1322_MAX_CHARS) " bytes"
 
 static uint32_t volatile framebuffer[SSD1322_FBSIZE_INT32] = {0};       // [64][32], row addr x col addr/2 -> 64 x 64*4
 static struct ssd1322_window volatile fb_upd_reg;                       // region to upload with update_gram function
@@ -44,7 +39,7 @@ void ssd1322_send_data(const uint32_t *const qbytes, const uint16_t qbytes_no) {
     }
 #elif (_SSD1322_IO_ == SSD1322_SPI3WIRE)
     spi_txd(HSPI, 8, SSD1322_WRITE);
-    for (; i < bytes_no; ++i)
+    for (; i < bytes_no; ++i)d
         spi_transaction(HSPI, 9, (uint16_t)(bytes[i]) | 0x100, 0, 0, 0, 0, 0, 0);
 #endif
 }
@@ -432,6 +427,11 @@ uint8_t ssd1322_print(const uint8_t* string, const uint16_t x_l, const uint16_t 
     get_font_info(&fnti);
     struct char_info chi;
     uint8_t override_last_char = *chars_in_fb.last_char;
+    os_printf("charsinfb: ");
+    uint8_t i = 0;
+    for (; i < SSD1322_MAX_CHARS; ++i)
+        os_printf("%c", chars_in_fb.chars[i]);
+    os_printf("\n");
 
     for (chr_idx = 0; string[chr_idx] != '\0'; ++chr_idx) {
         get_char(&chi, string[chr_idx]);

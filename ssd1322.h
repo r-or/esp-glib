@@ -2,13 +2,11 @@
 // see end of file
 
 // HEADER
-#ifndef __SSD1322__H__
-#define __SSD1322__H__
+#ifndef __SSD1322_H__
+#define __SSD1322_H__
 
 #include "stdint.h"
-
-struct font_info;
-struct char_info;
+#include "font.h"
 
 typedef enum {
     SSD1322_DM_TEXT,
@@ -46,7 +44,7 @@ uint8_t ssd1322_draw(const uint16_t x_ul, const uint16_t y_ul,
  * fetches char + prepares for drawing
  */
 uint8_t ssd1322_draw_char(const struct char_info *const chi, const struct font_info *const fnt,
-                          const uint16_t x_origin, const uint16_t y_ascend);
+                          const uint16_t x_origin, const uint16_t y_ascend, uint8_t clear_flag);
 
 /**
  * prints a string
