@@ -44,12 +44,14 @@ uint8_t ssd1322_draw(const uint16_t x_ul, const uint16_t y_ul,
  * fetches char + prepares for drawing
  */
 uint8_t ssd1322_draw_char(const struct char_info *const chi, const struct font_info *const fnt,
-                          const uint16_t x_origin, const uint16_t y_ascend, uint8_t clear_flag);
+                          const uint16_t x_origin, const uint16_t y_ascend);
 
 /**
  * prints a string
  */
-uint8_t ssd1322_print(const uint8_t* string, const uint16_t x_l, const uint16_t y_asc);
+uint8_t ssd1322_print(const uint8_t* string, const uint16_t x_l, const uint16_t y_asc, uint16_t *x_l_re, uint16_t *y_asc_re);
+
+uint8_t ssd1322_unescape(const uint8_t *string, uint8_t *const target);
 
 void ssd1322_set_cursor(const uint16_t x_l, const uint16_t y_asc);
 
@@ -180,7 +182,7 @@ void ssd1322_update_gram();
 #define SSD1322_ROWS            64
 #define SSD1322_FBSIZE_INT32    SSD1322_SEGMENTS * SSD1322_ROWS                             // 2048
 #define SSD1322_MAX_CHARS       (((SSD1322_SEGMENTS * 8) / _FONT_MIN_CHAR_WIDTH_) * \
-                                    (SSD1322_ROWS / _FONT_MAX_CHAR_HEIGHT_)) + 1            // floor
+                                    (SSD1322_ROWS / _FONT_MAX_CHAR_HEIGHT_)) + 2            // floor
 #endif
 
 // IO modes

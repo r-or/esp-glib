@@ -123,6 +123,7 @@ for char in chars:
     chy = int(char.attributes['rect'].value.split()[1])
     chw = int(char.attributes['rect'].value.split()[2])
     chh = int(char.attributes['rect'].value.split()[3])
+    chadv = int(char.attributes['advance'].value)
     chxoff = int(char.attributes['offset'].value.split()[0])
     chyoff = int(char.attributes['offset'].value.split()[1])
 
@@ -185,7 +186,7 @@ for char in chars:
         '        }}; break;\n'.format(char.attributes['id'].value.encode('latin-1')[0], \
                                          chxoff, \
                                          chyoff, \
-                                         char.attributes['advance'].value, \
+                                         chadv, \
                                          chw, \
                                          chh, \
                                          chaddress, \
@@ -195,8 +196,8 @@ for char in chars:
         maxfontlen = len(subimagebytearr)
     if chw > maxfontwidth:
         maxfontwidth = chw
-    if chw and char.getElementsByTagName('kerning') != [] and chw < minfontwidth:
-        minfontwidth = chw;
+    if chadv < minfontwidth:
+        minfontwidth = chadv;
     if chh > maxfontheight:
         maxfontheight = chh
     if chyoff > maxfontascent:

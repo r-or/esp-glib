@@ -344,7 +344,7 @@ uint8_t ssd1322_draw(const uint16_t x_ul, const uint16_t y_ul,
 static uint32_t chbuf[_FONT_MAX_CHAR_SIZE_INT32_];
 
 uint8_t ssd1322_draw_char(const struct char_info *const chi, const struct font_info *const fnt,
-                          const uint16_t x_origin, const uint16_t y_ascend, uint8_t clear_flag) {
+                          const uint16_t x_origin, const uint16_t y_ascend) {
     if (y_ascend - fnt->font_ascend < 0) {
 
 #if (VERBOSE > 1)
@@ -366,54 +366,73 @@ uint8_t ssd1322_draw_char(const struct char_info *const chi, const struct font_i
     os_printf("draw_char: fetch char info of %c: %luus\n", ch, system_get_time() - bench_time);
     bench_time = system_get_time();
 #endif
-    if (!clear_flag) {
-        spi_flash_read(FONT_ADDRESS + chi->address, chbuf, chi->length * sizeof(uint8_t));
+
+    spi_flash_read(FONT_ADDRESS + chi->address, chbuf, chi->length * sizeof(uint8_t));
 
 #if (VERBOSE > 0)
-        os_printf("draw_char: fetch char bin: %luus\n", system_get_time() - bench_time);
+    os_printf("draw_char: fetch char bin: %luus\n", system_get_time() - bench_time);
 #endif
 
-        // switch endianness
-        uint16_t bufidx;
+    // switch endianness
+    uint16_t bufidx;
 #ifdef FONT_SWAP_ENDIANNESS
-        for (bufidx = 0; bufidx < _FONT_MAX_CHAR_SIZE_INT32_; ++bufidx)
-            chbuf[bufidx] = ((chbuf[bufidx] >> 24) & 0x000000FF) | ((chbuf[bufidx] >> 8) & 0x0000FF00)
-                          | ((chbuf[bufidx] << 24) & 0xFF000000) | ((chbuf[bufidx] << 8) & 0x00FF0000);
+    for (bufidx = 0; bufidx < _FONT_MAX_CHAR_SIZE_INT32_; ++bufidx)
+        chbuf[bufidx] = ((chbuf[bufidx] >> 24) & 0x000000FF) | ((chbuf[bufidx] >> 8) & 0x0000FF00)
+                      | ((chbuf[bufidx] << 24) & 0xFF000000) | ((chbuf[bufidx] << 8) & 0x00FF0000);
 #endif
 
     // sort by pixels
 #if (FONT_SORT_PIXELS == 1)
-        for (bufidx = 0; bufidx < _FONT_MAX_CHAR_SIZE_INT32_; ++bufidx)
-            chbuf[bufidx] = ((chbuf[bufidx] << 28) & 0xF0000000) | ((chbuf[bufidx] << 20) & 0x0F000000)
-                          | ((chbuf[bufidx] << 12) & 0x00F00000) | ((chbuf[bufidx] << 4)  & 0x000F0000)
-                          | ((chbuf[bufidx] >> 4)  & 0x0000F000) | ((chbuf[bufidx] >> 12) & 0x00000F00)
-                          | ((chbuf[bufidx] >> 20) & 0x000000F0) | ((chbuf[bufidx] >> 28) & 0x0000000F);
+    for (bufidx = 0; bufidx < _FONT_MAX_CHAR_SIZE_INT32_; ++bufidx)
+        chbuf[bufidx] = ((chbuf[bufidx] << 28) & 0xF0000000) | ((chbuf[bufidx] << 20) & 0x0F000000)
+                      | ((chbuf[bufidx] << 12) & 0x00F00000) | ((chbuf[bufidx] << 4)  & 0x000F0000)
+                      | ((chbuf[bufidx] >> 4)  & 0x0000F000) | ((chbuf[bufidx] >> 12) & 0x00000F00)
+                      | ((chbuf[bufidx] >> 20) & 0x000000F0) | ((chbuf[bufidx] >> 28) & 0x0000000F);
 #elif (FONT_SORT_PIXELS == 2)
-        for (bufidx = 0; bufidx < _FONT_MAX_CHAR_SIZE_INT32_; ++bufidx)
-            chbuf[bufidx] = ((chbuf[bufidx] << 4)  & 0xF0F0F0F0) | ((chbuf[bufidx] >> 4) & 0x0F0F0F0F);
+    for (bufidx = 0; bufidx < _FONT_MAX_CHAR_SIZE_INT32_; ++bufidx)
+        chbuf[bufidx] = ((chbuf[bufidx] << 4)  & 0xF0F0F0F0) | ((chbuf[bufidx] >> 4) & 0x0F0F0F0F);
 #endif
 
 #if (VERBOSE > 1)
         os_printf("charinfo: addr: 0x%08x, len: %d, wid: %d, hei: %d\n",
                   chi.address, chi.length, chi.width, chi.height);
 #endif
-    } else {
-        uint8_t i = 0;
-        uint8_t fntlen32 = (chi->length + 3) / 4;
-        for (; i < fntlen32; ++i)
-            chbuf[i] = 0;
-#if (VERBOSE > 1)
-        os_printf("del charinfo: addr: 0x%08x, len: %d, wid: %d, hei: %d\n",
-                  chi.address, chi.length, chi.width, chi.height);
-#endif
-    }
+
     ssd1322_draw((uint16_t)x_ul, y_ul, chbuf, (uint16_t)chi->height, (uint16_t)chi->width);
 
     return 0;
 }
 
+
+uint8_t ishex(uint8_t chr) {
+    return (chr >= '0' && chr <= '9') ||
+            (chr >= 'A' && chr <= 'F') ||
+            (chr >= 'a' && chr <= 'f');
+}
+
+
+uint8_t hex2int(uint8_t chr) {
+    if (chr >= '0' && chr <= '9')
+        return chr - '0';
+    if (chr >= 'A' && chr <= 'F')
+        return chr - 'A' + 10;
+    if (chr >= 'a' && chr <= 'f')
+        return chr - 'a' + 10;
+    return 0;
+}
+
+
+uint8_t ssd1322_unescape(const uint8_t *string, uint8_t * const target) {
+    if (string[0] == '%' && ishex(string[1]) && ishex(string[2])) {
+        *target = hex2int(string[1]) * 0x10 + hex2int(string[2]);
+        return 0;
+    }
+
+    return 1;
+}
+
 // draw string inside selected area with offsets
-uint8_t ssd1322_print(const uint8_t* string, const uint16_t x_l, const uint16_t y_asc) {
+uint8_t ssd1322_print(const uint8_t* string, const uint16_t x_l, const uint16_t y_asc, uint16_t *x_l_re, uint16_t *y_asc_re) {
     uint16_t chr_idx;
     uint16_t currx, curry;
     if (!xpos && !ypos) {
@@ -427,14 +446,18 @@ uint8_t ssd1322_print(const uint8_t* string, const uint16_t x_l, const uint16_t 
     get_font_info(&fnti);
     struct char_info chi;
     uint8_t override_last_char = *chars_in_fb.last_char;
-    os_printf("charsinfb: ");
-    uint8_t i = 0;
-    for (; i < SSD1322_MAX_CHARS; ++i)
-        os_printf("%c", chars_in_fb.chars[i]);
-    os_printf("\n");
 
     for (chr_idx = 0; string[chr_idx] != '\0'; ++chr_idx) {
-        get_char(&chi, string[chr_idx]);
+        // check for HTML escape
+        uint8_t currchr;
+        if (!ssd1322_unescape(&string[chr_idx], &currchr))
+            chr_idx += 2;
+        else
+            currchr = string[chr_idx];
+
+        uint8_t not_renderable = get_char(&chi, currchr);
+
+        //os_printf("cchr: %d\n", currchr);
 
         // boundary checks
         if (currx + chi.advance >= SSD1322_SEGMENTS * 8) {  // newline type 1
@@ -442,36 +465,66 @@ uint8_t ssd1322_print(const uint8_t* string, const uint16_t x_l, const uint16_t 
             curry += fnti.font_height;
             currx = x_l;
             // skip next newline / space
-            if (string[chr_idx + 1] == '\n' || string[chr_idx + 1] == ' ')
-                ++chr_idx;
+//            if (string[chr_idx + 1] == '\n' || string[chr_idx + 1] == ' ')
+//                ++chr_idx;
         }
-        if (string[chr_idx] == '\n') {  // newline type 2
+        if (currchr == '\n') {  // newline type 2
             override_last_char = 0;
             curry += fnti.font_height;
             currx = x_l;
             continue;
         }
-        if (string[chr_idx] == '\r') {  // carriage return
+        if (currchr == '\r') {  // carriage return
             override_last_char = 0;
             currx = x_l;
             continue;
         }
-        if (string[chr_idx] == 8) {     // backspace
-            if (chars_in_fb.last_char > chars_in_fb.chars) {
-                --chars_in_fb.last_char;
-                override_last_char = *chars_in_fb.last_char;
-                struct char_info lchi;
-                get_char(&lchi, *chars_in_fb.last_char);
-                currx -= lchi.advance;
-                ssd1322_draw_char(&lchi, &fnti, currx, curry, 1);
+        if (currchr == 8) {     // backspace -- well fuck.
+            uint8_t bsnum = 1;  // number of consecutive backspaces
+            uint8_t unesc;
+            for (; string[chr_idx + 1] != '\0'; ++chr_idx) {
+                if (!ssd1322_unescape(&string[chr_idx + 1], &unesc))
+                    chr_idx += 2;
+                else
+                    unesc = string[chr_idx + 1];
+
+                if (unesc == 8)
+                    ++bsnum;
+                else
+                    break;
             }
+            // set end of new string -> zero at forward position
+            chars_in_fb.last_char -= (bsnum - 1);
+            if (chars_in_fb.last_char > chars_in_fb.chars) {
+                *chars_in_fb.last_char = 0;
+            } else {    // whole string is gone
+                chars_in_fb.chars[1] = 0;
+            }
+            ssd1322_clear_fb(0);
+            xpos = 0;
+            ypos = 0;
+            currx = x_l;
+            curry = y_asc;
+            chars_in_fb.last_char = chars_in_fb.chars;
+
+            // print history without last char(s); return new positions
+            // NOTE: not really recursive, as it will probably only get called once...
+            //       exluding stuff like "a\bb\bc\bd" etc <- but who does that?!
+            ssd1322_print(&chars_in_fb.chars[1], x_l, y_asc, &currx, &curry);
+
             continue;
         }
+
+        // skip this char
+        if (not_renderable)
+            continue;
+
         if (curry - fnti.font_ascend + fnti.font_height >= SSD1322_ROWS) { // no space left, newline type 3
 #if (VERBOSE > 1)
             os_printf("ssd1322_print: no space left (y = %d, need %d)\n", curry, curry - fnti.font_ascend + fnti.font_height);
 #endif
             override_last_char = 0;
+            chars_in_fb.last_char = chars_in_fb.chars;  // reset char history
             if (drawmode == SSD1322_DM_TEXT) {
                 xpos = currx;
                 ypos = curry;
@@ -488,25 +541,42 @@ uint8_t ssd1322_print(const uint8_t* string, const uint16_t x_l, const uint16_t 
         }
 
         // only kerning if no new line
-        currx += get_kerning(override_last_char, string[chr_idx]);
+        currx += get_kerning(override_last_char, currchr);
         if ((int32_t)currx + (int32_t)chi.xoffset < 0)
             currx -= chi.xoffset;
 
-        if (ssd1322_draw_char(&chi, &fnti, currx, curry, 0)) {
+        if (ssd1322_draw_char(&chi, &fnti, currx, curry)) {
 #if (VERBOSE > 1)
-            os_printf("ssd1322_print: skipped '%c'\n", string[chr_idx]);
+            os_printf("ssd1322_print: skipped '%c'\n", currchr);
 #endif
             continue;
         }
         currx += chi.advance;
-        override_last_char = string[chr_idx];
-//        ++chars_in_fb.last_char;
-//        *chars_in_fb.last_char = string[chr_idx];
-    }
+        override_last_char = currchr;
+        ++chars_in_fb.last_char;    // chars_in_fb.chars[0] is always 0!
+        *chars_in_fb.last_char = currchr;
+    }   // for chr_idx in string
+
     if (drawmode != SSD1322_DM_FREE) {
         xpos = currx;
         ypos = curry;
     }
+
+#if (VERBOSE > 0)
+    os_printf("charsinfb: ");
+    uint8_t *cchr = chars_in_fb.chars;
+    for (; cchr <= chars_in_fb.last_char; ++cchr)
+        os_printf("%c", *cchr);
+    os_printf("; len (%lu/%d) @ chars + %lu; %lu to go\n", (cchr - chars_in_fb.chars) / sizeof(uint8_t) + 1, SSD1322_MAX_CHARS,
+                (chars_in_fb.last_char - chars_in_fb.chars) / sizeof(uint8_t) + 1,
+                (&chars_in_fb.chars[SSD1322_MAX_CHARS - 1] - cchr) / sizeof(uint8_t));
+#endif
+
+    if (x_l_re && y_asc_re) {   // return new position
+        *x_l_re = currx;
+        *y_asc_re = curry;
+    }
+
     return 0;
 }
 

@@ -3,10 +3,11 @@
 
 #include "stdint.h"
 
+#define _FONT_HANKEN_LIGHT_13_HANKEN_LIGHT_13_
 #define _FONT_MAX_CHAR_SIZE_INT8_ 	132
 #define _FONT_MAX_CHAR_SIZE_INT32_ 	33
 #define _FONT_MAX_CHAR_WIDTH_ 	20
-#define _FONT_MIN_CHAR_WIDTH_ 	5
+#define _FONT_MIN_CHAR_WIDTH_ 	3
 #define _FONT_MAX_CHAR_HEIGHT_ 	17
 #define _FONT_MAX_CHAR_ASCENT_ 	16
 
@@ -27,6 +28,7 @@ struct char_info {
     uint8_t width;
     uint8_t height;
 };
+
 // latin-1 encoding!
 uint8_t get_char(struct char_info *const ch_info, const uint8_t ch);
 
