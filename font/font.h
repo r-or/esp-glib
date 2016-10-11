@@ -3,13 +3,13 @@
 
 #include "stdint.h"
 
-#define _FONT_HANKEN_LIGHT_13_HANKEN_LIGHT_13_
-#define _FONT_MAX_CHAR_SIZE_INT8_ 	132
+#define _FONT_HANKEN_LIGHT_13_
+#define _FONT_MAX_CHAR_SIZE_INT8_ 	132	// bytes to store biggest char (2D)
 #define _FONT_MAX_CHAR_SIZE_INT32_ 	33
-#define _FONT_MAX_CHAR_WIDTH_ 	20
-#define _FONT_MIN_CHAR_WIDTH_ 	3
-#define _FONT_MAX_CHAR_HEIGHT_ 	17
-#define _FONT_MAX_CHAR_ASCENT_ 	16
+#define _FONT_MAX_CHAR_WIDTH_ 	20	// pix
+#define _FONT_MAX_CHAR_HEIGHT_ 	17	// pix
+#define _FONT_MIN_CHAR_WIDTH_ 	3	// useful for worst case num of printable chars (min advance)
+#define _FONT_MAX_CHAR_ASCENT_ 	16	// max char height with respect to base line (for cursor placement)
 
 struct font_info {
     uint32_t font_size;		// size in bytes

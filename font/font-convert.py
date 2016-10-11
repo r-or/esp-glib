@@ -9,36 +9,100 @@ import numpy as np
 import math
 import struct
 
+
+# FUNCTIONS
 def printHelp():
     print("Usage:", \
-        "\tpython3 font-convert.py", \
+        "\tpython3 png2gs.py", \
         "\n mandatory:", \
+        "\n <generic.png>", \
+        "\n OR", \
+        "\n mandatory:", \
+        "\n\t -f", \
         "\n\t <font.xml>", \
         "\n\t <font.png>", \
-        "\n optional:", \
+        "\n\t <generic.png>"
+        "\n optional (some options will be ignored depending on above choice):", \
         "\n\t -d [int: bit depth]", \
         "\n\t -be\t -> big endian (if -d > 8)", \
         "\n\t -ic\t -> store in iRAM instead of flash", \
-        "\n\t -a [int: aligned by bytes]")
+        "\n\t -a [int: aligned by bytes]", \
+        "\n\t -p\t -> show preview")
+        
 
-
-if len(sys.argv) > 2:
-    fxml = sys.argv[1]
-    fpng = sys.argv[2]
-else:
-    printHelp()
-    sys.exit()
+#   stack(
+#       ndarray(image),
+#       int(targetDepth))
+def stack(imgarray8bit, tdepth):
+    stackedarr = array('B')
+    bytenum = math.ceil(len(imgarray8bit) / (8 / tdepth))
+    j = 0
+    oh = 0
+    for i in range(0, bytenum):
+        stackedarr.append(0)
+        k = 8
+        while k > 0 and j < len(imgarray8bit):
+            k -= tdepth
+            #print(subimagearr[j], k, oh)
+            if k >= 0:
+                stackedarr[-1] |= ((imgarray8bit[j] << k + oh) & 0xFF)
+                oh = 0
+            else:
+                stackedarr[-1] |= imgarray8bit[j] >> -k
+                j -= 1
+                oh = tdepth + k
+            j += 1
+            
+    return stackedarr
     
+
+#   quantise(
+#       ndarray(image),
+#       int(imageDepth),
+#       int(targetDepth))
+def quantise(imgarray, depth, tdepth):
+    return np.array([int(round(k / \
+            ((math.pow(2, depth) / math.pow(2, tdepth)) + 1))) for k in imgarray])
+            
+            
+#   saveimg(
+#       ndarray(image),
+#       bool(lendian),
+#       str(name))
+def saveimg(imgarray, twlen, littleendian, outname):        # TODO: endianness
+    outb = open(outname, 'wb')
+    #imgarray = np.array();
+    #for i in range(0, (len(imgarray8bit) + (twlen / 8) - 1) / (twlen / 8)):
+    #    imgarray.append(0)
+    #    for k in range(0, twlen / 8):
+    #        imgarray[-1] |= imgarray8bit[i * (twlen / 8) + k] << (twlen - (k + 1) * twlen / 8)
+        
+    outb.write(struct.pack('{}{}B'.format('<' if littleendian else '>', len(imgarray)), *imgarray))
+    outb.close()
+    print('Created bitmap:', outname)
+
+
+
+# MAIN
 tdepth = 8
+twlen = 32
 talign = 0
 lendian = 1
 storeonflash = 1
+font = False
+preview = False
 
-idx = 3
+idx = 1
 while idx < len(sys.argv):
-    if sys.argv[idx] == '-d':
+    if sys.argv[idx] == '-f':
+        font = True;
+    elif sys.argv[idx] == '-d':
         if len(sys.argv) - 1 > idx:
             tdepth = int(sys.argv[idx + 1])
+            idx += 1
+    elif sys.argv[idx] == '-w':
+        if len(sys.argv) - 1 > idx:
+            twlen = int(sys.argv[idx + 1])
             idx += 1
     elif sys.argv[idx] == '-a':
         if len(sys.argv) - 1 > idx:
@@ -48,12 +112,60 @@ while idx < len(sys.argv):
         lendian = 0
     elif sys.argv[idx] == '-ic':
         storeonflash = 0
+    elif sys.argv[idx] == '-p':
+        preview = True;
     elif sys.argv[idx] == '-h':
         printHelp()
         sys.exit()
     idx += 1
     
+if len(sys.argv) < 2 or (not font and len(sys.argv) >= 2 and sys.argv[2][0] != '-'):
+    printHelp()
+    sys.exit()
     
+if font:
+    fxml = sys.argv[1]
+    fpng = sys.argv[2]
+else:
+    fpng = sys.argv[1]
+    
+    
+# BITMAP CONVERSION
+preader = png.Reader(filename=fpng)
+pngw, pngh, pngpixels, pngmeta = preader.read_flat()
+pngpixwidth = 4 if pngmeta['alpha'] else 3
+gspixels = array('B')
+
+if pngpixwidth == 4:
+#    if pngpixels[0::4][1:] == pngpixels[0::4][:-1]:      # all R values equal -> no information in RGB channels
+    gspixels.extend(pngpixels[3::4])  # use alpha channel
+#    print("using alpha")
+#    else:
+#        gspixels.extend(pngpixels[0::4])  # assume greyscale... TODO: convert RGB to greyscale first
+#        print("using RGB")
+else:
+    gspixels.extend(pngpixels[0::3])
+    
+# quantise
+gspixels = quantise(np.array(gspixels), pngmeta['bitdepth'], tdepth)
+
+
+print(gspixels, gspixels.shape, pngh, pngw)
+if preview:
+    plt.imshow(np.reshape(gspixels, (pngh, pngw)), interpolation='nearest', cmap='Greys_r')
+    plt.axis('equal')
+    ax = plt.gca()
+    ax.set_axis_bgcolor('black')
+    plt.show()
+
+if not font:
+    gspixels = stack(gspixels, tdepth)
+    outname = fpng.rstrip('.png').rstrip('.PNG').split('/')[-1] + '_{}bit.gray'.format(tdepth)
+    saveimg(gspixels, twlen, lendian, outname)
+    sys.exit()
+    
+    
+# FONT
 doc = minidom.parse(fxml)
 
 fdesc = doc.getElementsByTagName('description')[0]
@@ -95,20 +207,6 @@ body = \
     '{} get_char(struct char_info *const ch_info, const uint8_t ch) {{\n' \
     '    switch(ch) {{\n'.format('static uint8_t' if not storeonflash else 'uint8_t ICACHE_FLASH_ATTR')
     
-    
-preader = png.Reader(filename=fpng)
-pngw, pngh, pngpixels, pngmeta = preader.read_flat()
-pngpixwidth = 4 if pngmeta['alpha'] else 3
-gspixels = array('B')
-
-if pngpixwidth == 4:
-    if pngpixels[0::4][1:] == pngpixels[0::4][:-1]:      # all R values equal -> no information in RGB channels
-        gspixels.extend(pngpixels[3::4])  # use alpha channel
-    else:
-        gspixels.extend(pngpixels[0::4])  # assume greyscale... TODO: convert RGB to greyscale first
-else:
-    gspixels.extend(pngpixels[0::3])
-
 chars = doc.getElementsByTagName('char')
 
 bytearr = array('B')
@@ -140,30 +238,9 @@ for char in chars:
 #    ax.set_axis_bgcolor('black')
 #    plt.show()
 
-    # quantise
-    subimagearr = np.array([int(round(k / \
-        ((math.pow(2, pngmeta['bitdepth']) / math.pow(2, tdepth)) + 1))) for k in subimagearr])
-
     # stack bytes
-    subimagebytearr = array('B')
-    bytenum = math.ceil(len(subimagearr) / (8 / tdepth))
-    j = 0
-    oh = 0
-    for i in range(0, bytenum):
-        subimagebytearr.append(0)
-        k = 8
-        while k > 0 and j < len(subimagearr):
-            k -= tdepth
-            #print(subimagearr[j], k, oh)
-            if k >= 0:
-                subimagebytearr[-1] |= ((subimagearr[j] << k + oh) & 0xFF)
-                oh = 0
-            else:
-                subimagebytearr[-1] |= subimagearr[j] >> -k
-                j -= 1
-                oh = tdepth + k
-            j += 1
-
+    subimagebytearr = stack(subimagearr, tdepth)
+    
     # store in bytelist
     if talign:
         while len(subimagebytearr) % talign:
@@ -213,11 +290,7 @@ body += \
     
 # store image
 outbname = fpng.rstrip('.png').rstrip('.PNG').split('/')[-1] + '_{}bit.gray'.format(tdepth)
-outb = open(outbname, 'wb')
-
-outb.write(struct.pack('{}{}B'.format('<' if lendian else '>', len(bytearr)), *bytearr))
-outb.close()
-    
+saveimg(bytearr, twlen, lendian, outbname)
     
 for char in chars:
     kernings = char.getElementsByTagName('kerning')
@@ -264,15 +337,15 @@ if storeonflash:
     body = '#include "user_interface.h"\n\n' + body
  
 defs += \
-    '#define _FONT_{}_{}_\n' \
-    '#define _FONT_MAX_CHAR_SIZE_INT8_ \t{}\n' \
+    '#define _FONT_{}_\n' \
+    '#define _FONT_MAX_CHAR_SIZE_INT8_ \t{}\t// bytes to store biggest char (2D)\n' \
     '#define _FONT_MAX_CHAR_SIZE_INT32_ \t{}\n' \
-    '#define _FONT_MAX_CHAR_WIDTH_ \t{}\n' \
-    '#define _FONT_MIN_CHAR_WIDTH_ \t{}\n' \
-    '#define _FONT_MAX_CHAR_HEIGHT_ \t{}\n' \
-    '#define _FONT_MAX_CHAR_ASCENT_ \t{}\n' \
-    '\n'.format(fontname.upper(), fontname.upper(), maxfontlen, math.ceil(maxfontlen / 4), \
-        maxfontwidth, minfontwidth, maxfontheight, maxfontascent);
+    '#define _FONT_MAX_CHAR_WIDTH_ \t{}\t// pix\n' \
+    '#define _FONT_MAX_CHAR_HEIGHT_ \t{}\t// pix\n' \
+    '#define _FONT_MIN_CHAR_WIDTH_ \t{}\t// useful for worst case num of printable chars (min advance)\n' \
+    '#define _FONT_MAX_CHAR_ASCENT_ \t{}\t// max char height with respect to base line (for cursor placement)\n' \
+    '\n'.format(fontname.upper(), maxfontlen, math.ceil(maxfontlen / 4), \
+        maxfontwidth, maxfontheight, minfontwidth, maxfontascent);
  
 declares += \
     '#endif';
@@ -287,4 +360,3 @@ out.write('#include "{}h"\n\n'.format(outname) + body)
 print('Processed {} glyphs. Size: {} bytes.'.format(len(chars), len(bytearr)))
 print('Created {}.h, {}.c. Copy to ../. Also do a clean make' \
     ' or gcc will not update the addresses!'.format(outname, outname))
-print('Created bitmap:', outbname)

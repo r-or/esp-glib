@@ -14,6 +14,12 @@ typedef enum {
     SSD1322_DM_FREE
 } ssd1322_draw_mode;
 
+typedef enum {
+    SSD1322_DA_FLIPLR = 0x01,
+    SSD1322_DA_FLIPTB = 0x02,
+    SSD1322_DA_INVERT = 0x04
+} ssd1322_draw_args;
+
 struct ssd1322_window {
     uint8_t seg_left;
     uint8_t seg_right;
@@ -29,6 +35,8 @@ void ssd1322_reset(void);
 
 void ssd1322_clear(const uint32_t seg_value);
 
+void ssd1322_clear_fb(const uint32_t seg_value);
+
 void ssd1322_send_data(const uint32_t *const qbytes, const uint16_t qbytes_no);
 
 void ssd1322_send_command(const uint8_t *const cmd, const uint8_t cmd_len);
@@ -37,8 +45,14 @@ void ssd1322_send_command_list(const uint8_t *const cmd_list, const uint8_t list
 
 void ssd1322_set_area(const struct ssd1322_window *const region);
 
-uint8_t ssd1322_draw(const uint16_t x_ul, const uint16_t y_ul,
-                     uint32_t *const bitmap, const uint16_t height, const uint16_t width);
+uint8_t ssd1322_draw(const uint16_t x_ul, const uint16_t y_ul, uint32_t *const bitmap,
+                     const uint16_t height, const uint16_t width);
+
+/**
+ * fetches bmp from flash + prepares for drawing
+ */
+uint8_t ssd1322_draw_bitmap(const uint16_t x_ul, const uint16_t y_ul, uint32_t address,
+                            const uint16_t height, const uint16_t width, const ssd1322_draw_args args);
 
 /**
  * fetches char + prepares for drawing
@@ -49,7 +63,8 @@ uint8_t ssd1322_draw_char(const struct char_info *const chi, const struct font_i
 /**
  * prints a string
  */
-uint8_t ssd1322_print(const uint8_t* string, const uint16_t x_l, const uint16_t y_asc, uint16_t *x_l_re, uint16_t *y_asc_re);
+uint8_t ssd1322_print(const uint8_t* string, const uint16_t x_l, const uint16_t y_asc,
+                      uint16_t *x_l_re, uint16_t *y_asc_re);
 
 uint8_t ssd1322_unescape(const uint8_t *string, uint8_t *const target);
 
@@ -173,7 +188,8 @@ void ssd1322_update_gram();
 
 // resolution
 #ifndef _SSD1322_MODE_
-#define _SSD1322_MODE_ 256*64
+#define _SSD1322_MODE_          256*64
+#define SSD1322_PIXDEPTH        4
 #define SSD1322_COL_SEG_START   0x1C    // 28
 #define SSD1322_COL_SEG_END     0x5B    // 91
 #define SSD1322_ROW_START       0x00    // 0

@@ -45,7 +45,7 @@ void ssd1322_send_data(const uint32_t *const qbytes, const uint16_t qbytes_no) {
 }
 
 // send stuff to cmd register
-void ssd1322_send_command(const uint8_t *const cmd, const uint8_t cmd_len) {
+void ICACHE_FLASH_ATTR ssd1322_send_command(const uint8_t *const cmd, const uint8_t cmd_len) {
     write_to_gram = 0;
 #if (_SSD1322_IO_ == SSD1322_SPI4WIRE)
     gpio_output_set(0, BIT2, BIT2, 0);  // set D/C line low
@@ -78,7 +78,7 @@ void ssd1322_send_command(const uint8_t *const cmd, const uint8_t cmd_len) {
 #endif
 }
 
-void ssd1322_send_command_list(const uint8_t *const cmd_list, const uint8_t list_len) {
+void ICACHE_FLASH_ATTR ssd1322_send_command_list(const uint8_t *const cmd_list, const uint8_t list_len) {
     write_to_gram = 0;
     uint8_t i = 0;
 #if VERBOSE > 1
@@ -136,8 +136,26 @@ void ssd1322_send_command_list(const uint8_t *const cmd_list, const uint8_t list
 #endif
 }
 
-void ssd1322_set_area(const struct ssd1322_window *const region) {
+void ICACHE_FLASH_ATTR ssd1322_set_area(const struct ssd1322_window *const region) {
     if (region != NULL) {
+        if (SSD1322_ROW_START + region->row_top > SSD1322_ROW_END
+                || region->row_bottom > region->row_top
+                || SSD1322_COL_SEG_START + region->seg_right * 2 + 1 > SSD1322_COL_SEG_END
+                || region->seg_left > region->seg_right) {
+            // region outside boundaries
+            os_printf("ssd1322_set_area: critical error... area outside boundaries!\n");
+#if (VERBOSE > 0)
+            os_printf(" ROW_START + area.row_top: %d !<= ROW_END: %d\n"
+                      " !>= ROW_START + area.row_bottom: %d\n"
+                      " COL_SEG_START + area.segright: %d !<= COL_SEG_END:\n"
+                      " !>= COL_SEG_START + area.segleft: %d\n",
+                      SSD1322_ROW_START + region->row_top, SSD1322_ROW_END,
+                      SSD1322_ROW_START + region->row_bottom,
+                      SSD1322_COL_SEG_START + region->seg_right * 2 + 1, SSD1322_COL_SEG_END,
+                      SSD1322_COL_SEG_START + region->seg_left * 2);
+#endif
+            return;
+        }
         // check if window changed
         if (region->row_bottom == fb_upd_reg_old.row_bottom && region->row_top == fb_upd_reg_old.row_top
                 && region->seg_left == fb_upd_reg_old.seg_left && region->seg_right == fb_upd_reg_old.seg_right)
@@ -171,7 +189,7 @@ void ssd1322_set_area(const struct ssd1322_window *const region) {
 #endif
 }
 
-void ssd1322_clear(const uint32_t seg_value) {
+void ICACHE_FLASH_ATTR ssd1322_clear(const uint32_t seg_value) {
 #if (_SSD1322_MODE_ == 256*64)
     uint16_t i = 0;
     ssd1322_set_area(NULL); // reset area
@@ -202,7 +220,7 @@ void ssd1322_clear_fb(const uint32_t seg_value) {
         framebuffer[i] = seg_value;
 }
 
-void ssd1322_reset(void) {
+void ICACHE_FLASH_ATTR ssd1322_reset(void) {
     xpos = 0;
     ypos = 0;
     fb_upd_reg = (struct ssd1322_window) {
@@ -226,8 +244,8 @@ void ssd1322_reset(void) {
 #endif
 }
 
-uint8_t ssd1322_draw(const uint16_t x_ul, const uint16_t y_ul,
-             uint32_t *const bitmap, const uint16_t height, const uint16_t width) {
+uint8_t ssd1322_draw(const uint16_t x_ul, const uint16_t y_ul, uint32_t *const bitmap,
+                     const uint16_t height, const uint16_t width) {
 
     /* SEGMENTATION of SSD1322:
      * seg ->                     1                         2    ... 32
@@ -246,7 +264,7 @@ uint8_t ssd1322_draw(const uint16_t x_ul, const uint16_t y_ul,
     uint8_t seg_r_pix = (x_ul + width) % 8;
 
     uint8_t seg_num = seg_r - seg_l + 1;   // segments affected per scanline
-    uint8_t pix_idx_y = 0;
+    uint16_t pix_idx_y = 0;
 
     uint32_t *currfb;
     uint32_t *currbuf = bitmap;
@@ -268,16 +286,17 @@ uint8_t ssd1322_draw(const uint16_t x_ul, const uint16_t y_ul,
     os_printf("buffer info: @(%d|%d); segl: %d, segr: %d, segs: %d, wid: %d, hei: %d\n",
               x_ul, y_ul, seg_l, seg_r, seg_num, width, height);
     os_printf("bindump:\n");
-    uint8_t i;
+    uint32_t i;
     for (i = 0; i < (height * width + 15) / 16; ++i)
         os_printf(" 0x%08x\n", bitmap[i]);
     os_printf("\n");
+    system_soft_wdt_feed();
     os_printf("fb: 0x%08x; lpad: %d, rpad: %d\n", framebuffer, seg_l_pix, seg_r_pix);
 #endif
 
     for (pix_idx_y = 0; pix_idx_y < height; ++pix_idx_y) {
 #if (VERBOSE == 4)
-        os_printf("y=%d\n cseg:", pix_idx_y);
+        os_printf("y=%d; currbuf (*currbuf) -> currfb\n cseg:", pix_idx_y);
 #endif
         for (curr_seg = 0; curr_seg < seg_num; ++curr_seg) {
             currfb = (uint32_t *)framebuffer + SSD1322_SEGMENTS * (y_ul - pix_idx_y) + seg_l + curr_seg;
@@ -286,12 +305,12 @@ uint8_t ssd1322_draw(const uint16_t x_ul, const uint16_t y_ul,
 #endif
 
             if (!curr_seg) {                        // 1st segment
-                cmask = 0xFFFFFFFF >> (seg_l_pix * 4);
+                cmask = 0xFFFFFFFF >> (seg_l_pix * SSD1322_PIXDEPTH);
                 if (seg_num == 1 && width != 8)
-                    cmask &= 0xFFFFFFFF << (32 - seg_r_pix * 4);
+                    cmask &= 0xFFFFFFFF << (32 - seg_r_pix * SSD1322_PIXDEPTH);
 
                 //*currfb &= ~cmask;        // clear last few pixel
-                *currfb |= ((*currbuf << (chbuf_pix_pad * 4)) >> (seg_l_pix * 4)) & cmask;
+                *currfb |= ((*currbuf << (chbuf_pix_pad * SSD1322_PIXDEPTH)) >> (seg_l_pix * SSD1322_PIXDEPTH)) & cmask;
                 if (seg_num == 1 && width != 8)
                     chbuf_pix_pad += ((seg_r_pix ? seg_r_pix : 8) - seg_l_pix);
                 else
@@ -303,11 +322,11 @@ uint8_t ssd1322_draw(const uint16_t x_ul, const uint16_t y_ul,
                     chbuf_pix_pad -= 8;
                     ++currbuf;
                     if (chbuf_pix_pad)
-                        *currfb |= (*currbuf >> ((((seg_num == 1) ? seg_r_pix : 32) - chbuf_pix_pad) * 4)) & cmask;
+                        *currfb |= (*currbuf >> ((((seg_num == 1) ? seg_r_pix : 32) - chbuf_pix_pad) * SSD1322_PIXDEPTH)) & cmask;
                 }
             } else if (curr_seg && curr_seg == seg_num - 1) {   // last segment
                 //*currfb &= (~(0xFFFFFFFF << (32 - seg_r_pix * 4)));   // clear 1st few pixel
-                *currfb |= (*currbuf << (chbuf_pix_pad * 4)) & (0xFFFFFFFF << (32 - seg_r_pix * 4));
+                *currfb |= (*currbuf << (chbuf_pix_pad * SSD1322_PIXDEPTH)) & (0xFFFFFFFF << (32 - seg_r_pix * SSD1322_PIXDEPTH));
                 chbuf_pix_pad += (seg_r_pix ? seg_r_pix : 8);
                 if (chbuf_pix_pad >= 8) { // increment pointer to char buffer, write remainder
 #if (VERBOSE == 4)
@@ -316,7 +335,8 @@ uint8_t ssd1322_draw(const uint16_t x_ul, const uint16_t y_ul,
                     chbuf_pix_pad -= 8;
                     ++currbuf;
                     if (chbuf_pix_pad)
-                        *currfb |= (*currbuf >> ((seg_r_pix - chbuf_pix_pad) * 4)) & (0xFFFFFFFF << (32 - seg_r_pix * 4));
+                        *currfb |= (*currbuf >> ((seg_r_pix - chbuf_pix_pad) * SSD1322_PIXDEPTH))
+                            & (0xFFFFFFFF << (32 - seg_r_pix * SSD1322_PIXDEPTH));
                 }
 
             } else {    // segment in between
@@ -335,8 +355,36 @@ uint8_t ssd1322_draw(const uint16_t x_ul, const uint16_t y_ul,
         }
 #if (VERBOSE == 3 || VERBOSE == 4)
         os_printf("\n" );
+        system_soft_wdt_feed();
 #endif
     }
+    return 0;
+}
+
+
+uint8_t ssd1322_transform(uint32_t *const buf, const ssd1322_draw_args args) {
+    return 0;
+}
+
+
+static uint32_t bmbuf[SSD1322_FBSIZE_INT32];    // TODO: maybe read line-wise to safe RAM -> TODO^2: 4byte align bmp by width
+
+uint8_t ICACHE_FLASH_ATTR ssd1322_draw_bitmap(const uint16_t x_ul, const uint16_t y_ul, uint32_t address,
+                            const uint16_t height, const uint16_t width, const ssd1322_draw_args args) {
+    if (width > SSD1322_SEGMENTS * 8 || height > SSD1322_ROWS) {
+#if (VERBOSE > 0)
+        os_printf("ssd1322_draw_bitmap: bitmap doesn't fit!\n");
+#endif
+        return 1;
+    }
+
+    spi_flash_read(BMP_ADDRESS + address, bmbuf, (height * width + 1) / 2 * sizeof(uint8_t));
+
+    if (args)
+        ssd1322_transform(bmbuf, args);
+
+    ssd1322_draw(x_ul, SSD1322_ROWS - 1 - y_ul, bmbuf, height, width);
+
     return 0;
 }
 
@@ -345,7 +393,7 @@ static uint32_t chbuf[_FONT_MAX_CHAR_SIZE_INT32_];
 
 uint8_t ssd1322_draw_char(const struct char_info *const chi, const struct font_info *const fnt,
                           const uint16_t x_origin, const uint16_t y_ascend) {
-    if (y_ascend - fnt->font_ascend < 0) {
+    if (y_ascend - fnt->font_ascend < 0) { // TODO: more security checks
 
 #if (VERBOSE > 1)
         os_printf("draw_char: not enough top space!\n");
@@ -363,7 +411,7 @@ uint8_t ssd1322_draw_char(const struct char_info *const chi, const struct font_i
     uint8_t x_ul = x_origin + chi->xoffset;
 
 #if (VERBOSE > 0)
-    os_printf("draw_char: fetch char info of %c: %luus\n", ch, system_get_time() - bench_time);
+    os_printf("draw_char: fetch char info: %luus\n", system_get_time() - bench_time);
     bench_time = system_get_time();
 #endif
 
@@ -395,7 +443,7 @@ uint8_t ssd1322_draw_char(const struct char_info *const chi, const struct font_i
 
 #if (VERBOSE > 1)
         os_printf("charinfo: addr: 0x%08x, len: %d, wid: %d, hei: %d\n",
-                  chi.address, chi.length, chi.width, chi.height);
+                  chi->address, chi->length, chi->width, chi->height);
 #endif
 
     ssd1322_draw((uint16_t)x_ul, y_ul, chbuf, (uint16_t)chi->height, (uint16_t)chi->width);
@@ -432,7 +480,7 @@ uint8_t ssd1322_unescape(const uint8_t *string, uint8_t * const target) {
 }
 
 // draw string inside selected area with offsets
-uint8_t ssd1322_print(const uint8_t* string, const uint16_t x_l, const uint16_t y_asc, uint16_t *x_l_re, uint16_t *y_asc_re) {
+uint8_t ICACHE_FLASH_ATTR ssd1322_print(const uint8_t* string, const uint16_t x_l, const uint16_t y_asc, uint16_t *x_l_re, uint16_t *y_asc_re) {
     uint16_t chr_idx;
     uint16_t currx, curry;
     if (!xpos && !ypos) {
@@ -580,13 +628,13 @@ uint8_t ssd1322_print(const uint8_t* string, const uint16_t x_l, const uint16_t 
     return 0;
 }
 
-void ssd1322_set_cursor(const uint16_t x_l, const uint16_t y_asc) {
+void ICACHE_FLASH_ATTR ssd1322_set_cursor(const uint16_t x_l, const uint16_t y_asc) {
     drawmode = SSD1322_DM_TEXT;
     xpos = x_l;
     ypos = y_asc;
 }
 
-void ssd1322_set_mode(const ssd1322_draw_mode dm) {
+void ICACHE_FLASH_ATTR ssd1322_set_mode(const ssd1322_draw_mode dm) {
     drawmode = dm;
 }
 
@@ -635,7 +683,7 @@ void ssd1322_update_gram() {
 
 
 // init SPI & SSD1322_
-void ssd1322_init(void) {
+void ICACHE_FLASH_ATTR ssd1322_init(void) {
     // SPI config
     spi_init(HSPI);
     spi_mode(HSPI, 1, 0); // 'trailing edge': positive edge
