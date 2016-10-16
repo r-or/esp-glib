@@ -15,9 +15,11 @@ typedef enum {
 } ssd1322_draw_mode;
 
 typedef enum {
-    SSD1322_DA_FLIPLR = 0x01,
-    SSD1322_DA_FLIPTB = 0x02,
-    SSD1322_DA_INVERT = 0x04
+    SSD1322_DA_NONE     = 0x00,
+    SSD1322_DA_FLIPLR   = 0x01,     // NOT read-only
+    SSD1322_DA_FLIPTB   = 0x02,     // read-only
+    SSD1322_DA_INVERT   = 0x04,     // NOT read-only
+    SSD1322_DA_SWENDIAN = 0x08      // NOT read-only
 } ssd1322_draw_args;
 
 struct ssd1322_window {
@@ -33,9 +35,11 @@ void ssd1322_init(void);
 
 void ssd1322_reset(void);
 
-void ssd1322_clear(const uint32_t seg_value);
+void ssd1322_clear(const uint32_t seg_value, const uint8_t fade_out);
 
-void ssd1322_clear_fb(const uint32_t seg_value);
+void ssd1322_clear_fb(const uint32_t seg_value, const uint8_t staged);
+
+void ssd1322_clear_txt(void);
 
 void ssd1322_send_data(const uint32_t *const qbytes, const uint16_t qbytes_no);
 
@@ -45,8 +49,19 @@ void ssd1322_send_command_list(const uint8_t *const cmd_list, const uint8_t list
 
 void ssd1322_set_area(const struct ssd1322_window *const region);
 
+/**
+ * performs transformation ON buf
+ * (only uses ssd1322_draw_args which are not read-only)
+ * dim: dim pixel by this (4bit) value
+ */
+uint8_t ssd1322_transform(uint32_t *const buf, const uint16_t height, const uint16_t width, const uint8_t dim,
+                          const ssd1322_draw_args args);
+
+/**
+ * read-only transformations + draws on FB
+ */
 uint8_t ssd1322_draw(const uint16_t x_ul, const uint16_t y_ul, uint32_t *const bitmap,
-                     const uint16_t height, const uint16_t width);
+                     const uint16_t height, const uint16_t width, const ssd1322_draw_args args);
 
 /**
  * fetches bmp from flash + prepares for drawing
@@ -58,7 +73,7 @@ uint8_t ssd1322_draw_bitmap(const uint16_t x_ul, const uint16_t y_ul, uint32_t a
  * fetches char + prepares for drawing
  */
 uint8_t ssd1322_draw_char(const struct char_info *const chi, const struct font_info *const fnt,
-                          const uint16_t x_origin, const uint16_t y_ascend);
+                          const uint16_t x_origin, const uint16_t y_ascend, const ssd1322_draw_args args);
 
 /**
  * prints a string
@@ -196,6 +211,7 @@ void ssd1322_update_gram();
 #define SSD1322_ROW_END         0x3F    // 63
 #define SSD1322_SEGMENTS        32
 #define SSD1322_ROWS            64
+#define SSD1322_MAX_BRIGHTNESS  127
 #define SSD1322_FBSIZE_INT32    SSD1322_SEGMENTS * SSD1322_ROWS                             // 2048
 #define SSD1322_MAX_CHARS       (((SSD1322_SEGMENTS * 8) / _FONT_MIN_CHAR_WIDTH_) * \
                                     (SSD1322_ROWS / _FONT_MAX_CHAR_HEIGHT_)) + 2            // floor

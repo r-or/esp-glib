@@ -355,7 +355,7 @@ out = open(outname + '.h', 'w')
 out.write(defs + declares);
 out.close()
 out = open(outname + '.c', 'w')
-out.write('#include "{}h"\n\n'.format(outname) + body)
+out.write('#include "{}.h"\n\n'.format(outname) + body)
 
 print('Processed {} glyphs. Size: {} bytes.'.format(len(chars), len(bytearr)))
 print('Created {}.h, {}.c. Copy to ../. Also do a clean make' \
