@@ -7,6 +7,7 @@
 
 #include "stdint.h"
 #include "font.h"
+#include "user_interface.h"
 
 typedef enum {
     SSD1322_DM_TEXT,
@@ -22,11 +23,18 @@ typedef enum {
     SSD1322_DA_SWENDIAN = 0x08      // NOT read-only
 } ssd1322_draw_args;
 
-struct ssd1322_window {
+struct ssd1322_window_phy {
     uint8_t seg_left;
     uint8_t seg_right;
     uint8_t row_bottom;
     uint8_t row_top;
+};
+
+struct ssd1322_window {
+    uint8_t x_left;
+    uint8_t x_right;
+    uint8_t y_bottom;
+    uint8_t y_top;
 };
 
 struct ssd1322_chars_in_fb;
@@ -47,7 +55,7 @@ void ssd1322_send_command(const uint8_t *const cmd, const uint8_t cmd_len);
 
 void ssd1322_send_command_list(const uint8_t *const cmd_list, const uint8_t list_len);
 
-void ssd1322_set_area(const struct ssd1322_window *const region);
+void ssd1322_set_area_phy(const struct ssd1322_window_phy *const region);
 
 /**
  * performs transformation ON buf
@@ -79,7 +87,9 @@ uint8_t ssd1322_draw_char(const struct char_info *const chi, const struct font_i
  * prints a string
  */
 uint8_t ssd1322_print(const uint8_t* string, const uint16_t x_l, const uint16_t y_asc,
-                      uint16_t *x_l_re, uint16_t *y_asc_re);
+                      const ssd1322_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re);
+
+void ssd1322_set_textbox(const struct ssd1322_window *const region);
 
 uint8_t ssd1322_unescape(const uint8_t *string, uint8_t *const target);
 
@@ -87,7 +97,7 @@ void ssd1322_set_cursor(const uint16_t x_l, const uint16_t y_asc);
 
 void ssd1322_set_mode(const ssd1322_draw_mode dm);
 
-void ssd1322_update_gram();
+void ssd1322_update_gram(void);
 
 /**************
  * CONFIG REGS
@@ -218,6 +228,8 @@ void ssd1322_update_gram();
 #endif
 
 // IO modes
-#ifndef _SSD1322_IO_
-#define _SSD1322_IO_ SSD1322_SPI4WIRE
+#ifndef _SSD1322_IO_        // do not change right now!
+#define _SSD1322_IO_            SSD1322_SPI4WIRE
+#define _SSD1322_DC_PIN_        BIT2
+#define _SSD1322_RESET_PIN_     BIT12
 #endif
