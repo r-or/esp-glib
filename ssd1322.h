@@ -7,12 +7,14 @@
 
 #include "stdint.h"
 #include "font.h"
+#include "assets.h"
 #include "user_interface.h"
 
 typedef enum {
-    SSD1322_DM_TEXT,
-    SSD1322_DM_TEXT_CLR,
-    SSD1322_DM_FREE
+    SSD1322_DM_TEXT,                // linebreak on words (delimiter: SPACE), no new page
+    SSD1322_DM_TEXT_CLR,            //                                      , clear on new page
+    SSD1322_DM_TEXT_LINE_FORCE,     // instead of linebreak, cut remainder & display '...'
+    SSD1322_DM_FREE                 // no auto linebreak at all
 } ssd1322_draw_mode;
 
 typedef enum {
@@ -20,7 +22,9 @@ typedef enum {
     SSD1322_DA_FLIPLR   = 0x01,     // NOT read-only
     SSD1322_DA_FLIPTB   = 0x02,     // read-only
     SSD1322_DA_INVERT   = 0x04,     // NOT read-only
-    SSD1322_DA_SWENDIAN = 0x08      // NOT read-only
+    SSD1322_DA_SWENDIAN = 0x08,     // NOT read-only
+    SSD1322_DA_CENTER_Y = 0x10,     // read-only
+    SSD1322_DA_CENTER_X = 0x20      // read-only
 } ssd1322_draw_args;
 
 struct ssd1322_window_phy {
@@ -84,7 +88,7 @@ uint8_t ssd1322_draw_char(const struct char_info *const chi, const struct font_i
                           const uint16_t x_origin, const uint16_t y_ascend, const ssd1322_draw_args args);
 
 /**
- * prints a string
+ * prints a zero-terminated string, latin1 encoding
  */
 uint8_t ssd1322_print(const uint8_t* string, const uint16_t x_l, const uint16_t y_asc,
                       const ssd1322_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re);

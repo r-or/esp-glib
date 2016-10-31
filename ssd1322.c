@@ -193,7 +193,7 @@ static uint8_t brightness = SSD1322_MAX_BRIGHTNESS;
 static uint8_t fadeout_type;
 static uint32_t seg_val_tmp = 0;
 
-void fadeout_func(void *arg) {
+void ICACHE_FLASH_ATTR fadeout_func(void *arg) {
     int16_t reduce_by = 1 + (SSD1322_MAX_BRIGHTNESS - brightness) * (SSD1322_MAX_BRIGHTNESS - brightness) / 5000;
     if ((int16_t)brightness - reduce_by < 0)
         brightness = 0;
@@ -246,7 +246,7 @@ void ICACHE_FLASH_ATTR ssd1322_clear(const uint32_t seg_value, const uint8_t fad
 #endif
 }
 
-void ssd1322_clear_fb(const uint32_t seg_value, const uint8_t staged) {
+void ICACHE_FLASH_ATTR ssd1322_clear_fb(const uint32_t seg_value, const uint8_t staged) {
     if (!staged) {
         fb_upd_reg = (struct ssd1322_window_phy) {
             .seg_left = 0,
@@ -286,7 +286,7 @@ void ICACHE_FLASH_ATTR ssd1322_reset(void) {
 #endif
 }
 
-uint8_t ssd1322_draw(const uint16_t x_ul, const uint16_t y_ul, uint32_t *const bitmap,
+uint8_t ICACHE_FLASH_ATTR ssd1322_draw(const uint16_t x_ul, const uint16_t y_ul, uint32_t *const bitmap,
                      const uint16_t height, const uint16_t width, const ssd1322_draw_args args) {
     if (!height || !width)
         return 0;
@@ -441,7 +441,7 @@ inline uint8_t getpix(uint32_t *seg, uint8_t id) {
     return (uint8_t)((*seg << id * SSD1322_PIXDEPTH) >> (32 - SSD1322_PIXDEPTH));
 }
 
-uint8_t ssd1322_transform(uint32_t *const buf, const uint16_t height, const uint16_t width, const uint8_t dim,
+uint8_t ICACHE_FLASH_ATTR ssd1322_transform(uint32_t *const buf, const uint16_t height, const uint16_t width, const uint8_t dim,
                           const ssd1322_draw_args args) {
     uint16_t rowcnt, segcnt;
     uint8_t segs = (width + 7) / 8;
@@ -515,7 +515,7 @@ uint8_t ICACHE_FLASH_ATTR ssd1322_draw_bitmap(const uint16_t x_ul, const uint16_
 
 static uint32_t chbuf[_FONT_MAX_CHAR_SIZE_INT32_];
 
-uint8_t ssd1322_draw_char(const struct char_info *const chi, const struct font_info *const fnt,
+uint8_t ICACHE_FLASH_ATTR ssd1322_draw_char(const struct char_info *const chi, const struct font_info *const fnt,
                           const uint16_t x_origin, const uint16_t y_ascend, const ssd1322_draw_args args) {
     if (y_ascend - fnt->font_ascend < 0) { // TODO: more security checks
 
@@ -571,14 +571,14 @@ uint8_t ssd1322_draw_char(const struct char_info *const chi, const struct font_i
 }
 
 
-uint8_t ishex(uint8_t chr) {
+inline uint8_t ishex(uint8_t chr) {
     return (chr >= '0' && chr <= '9') ||
             (chr >= 'A' && chr <= 'F') ||
             (chr >= 'a' && chr <= 'f');
 }
 
 
-uint8_t hex2int(uint8_t chr) {
+inline uint8_t hex2int(uint8_t chr) {
     if (chr >= '0' && chr <= '9')
         return chr - '0';
     if (chr >= 'A' && chr <= 'F')
@@ -589,7 +589,7 @@ uint8_t hex2int(uint8_t chr) {
 }
 
 
-uint8_t ssd1322_unescape(const uint8_t *string, uint8_t * const target) {
+inline uint8_t ssd1322_unescape(const uint8_t *string, uint8_t *const target) {
     if (string[0] == '%' && ishex(string[1]) && ishex(string[2])) {
         *target = hex2int(string[1]) * 0x10 + hex2int(string[2]);
         return 0;
@@ -610,8 +610,10 @@ static const struct ssd1322_window region_full = {
 static uint8_t line_count = 0;
 static struct ssd1322_window textbox;
 static struct font_info fnt_current;
+static struct char_info dotinfo;
 static ssd1322_draw_mode txt_drawmode = SSD1322_DM_TEXT;
 static uint16_t txt_xpos = 0, txt_ypos = 0;
+static uint16_t txt_x_old, txt_y_old;
 static struct ssd1322_chars_in_fb chars_in_fb;
 
 void ICACHE_FLASH_ATTR ssd1322_clear_txt(void) {
@@ -628,6 +630,7 @@ void ICACHE_FLASH_ATTR ssd1322_set_textbox(const struct ssd1322_window *const re
         textbox = region_full;
 
     get_font_info(&fnt_current);
+    get_char(&dotinfo, '.');
     line_count = (textbox.y_bottom - textbox.y_top) / fnt_current.font_height;
 }   // TODO: clear_textbox function
 
@@ -644,17 +647,22 @@ void ICACHE_FLASH_ATTR ssd1322_set_mode(const ssd1322_draw_mode dm) {
 // draw string inside selected area with offsets
 uint8_t ICACHE_FLASH_ATTR ssd1322_print(const uint8_t* string, const uint16_t x_l, const uint16_t y_asc,
                                         const ssd1322_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re) {
+#if (VERBOSE > 1)
+    os_printf("print: '%s'\n", string);
+#endif
     uint16_t chr_idx;
     uint16_t currx, curry;
-    if (!txt_xpos && !txt_ypos) {
-        currx = x_l;
-        curry = y_asc;
+    if (!txt_xpos && !txt_ypos || txt_drawmode == SSD1322_DM_FREE) {
+        // place 'cursor' inside textbox
+        currx = x_l + (txt_drawmode != SSD1322_DM_FREE) ? textbox.x_left : 0;
+        curry = y_asc + (txt_drawmode != SSD1322_DM_FREE) ? textbox.y_top : 0;
     } else {
         currx = txt_xpos;
         curry = txt_ypos;
     }
     struct char_info chi;
     uint8_t override_last_char = *chars_in_fb.last_char;
+    uint8_t line_force_tag = 0;
 
     for (chr_idx = 0; string[chr_idx] != '\0'; ++chr_idx) {
         // check for HTML escape
@@ -669,35 +677,47 @@ uint8_t ICACHE_FLASH_ATTR ssd1322_print(const uint8_t* string, const uint16_t x_
         //os_printf("cchr: %d\n", currchr);
 
         // boundary checks
-        if (renderable && currx + chi.advance >= SSD1322_SEGMENTS * 8) {  // newline type 1
+        if ((renderable && currx + chi.advance >= SSD1322_SEGMENTS * 8) || line_force_tag) {  // newline type 1
 #if (VERBOSE > 1)
             os_printf("print: newline type 1\n");
 #endif
-            // check for last word
-            uint8_t maxcharsperline = SSD1322_SEGMENTS * 8 / _FONT_MAX_CHAR_WIDTH_;
-            if (txt_drawmode != SSD1322_DM_FREE && chars_in_fb.last_char > chars_in_fb.last_word
-                    && chars_in_fb.last_char - chars_in_fb.last_word < maxcharsperline) {
-                os_printf("lastchar: %08x; lastword: %08x; max: %d\n", chars_in_fb.last_char, chars_in_fb.last_word, maxcharsperline);
-                // replace this ' ' with '\n' and rewind
-                ++chars_in_fb.last_char;
-                *chars_in_fb.last_char = 0; // rewind until now
-                *chars_in_fb.last_word = '\n';
-                ssd1322_clear_fb(0, 0);
-                ssd1322_clear_txt();
-                currx = x_l;
-                curry = y_asc;
-
-                ssd1322_print(&chars_in_fb.chars[1], x_l, y_asc, args, &currx, &curry);
+            if (txt_drawmode == SSD1322_DM_TEXT_LINE_FORCE) {
+                // draw '...'
+                if (currx + 3 * dotinfo.advance >= SSD1322_SEGMENTS * 8) {
+                    currchr = 8; // backspace -> del last char
+                    line_force_tag = 1;
+                } else {
+                    // '...' fits
+                    ssd1322_print("...", x_l, y_asc, args, NULL, NULL);
+                    return 1;
+                }
             } else {
-                override_last_char = 0;
-                curry += fnt_current.font_height;
-                currx = x_l;
-                // skip next newline / space
-                if (string[chr_idx + 1] == '\n' || string[chr_idx + 1] == ' ') {
-                    override_last_char = string[chr_idx + 1];
+                // linebreak on SPACE: check for last word
+                uint8_t maxcharsperline = SSD1322_SEGMENTS * 8 / _FONT_MAX_CHAR_WIDTH_;
+                if (txt_drawmode != SSD1322_DM_FREE && chars_in_fb.last_char > chars_in_fb.last_word
+                        && chars_in_fb.last_char - chars_in_fb.last_word < maxcharsperline) {
+                    os_printf("lastchar: %08x; lastword: %08x; max: %d\n", chars_in_fb.last_char, chars_in_fb.last_word, maxcharsperline);
+                    // replace this ' ' with '\n' and rewind
                     ++chars_in_fb.last_char;
-                    *chars_in_fb.last_char = string[chr_idx + 1];
-                    ++chr_idx;
+                    *chars_in_fb.last_char = 0; // rewind until now
+                    *chars_in_fb.last_word = '\n';
+                    ssd1322_clear_fb(0, 0);
+                    ssd1322_clear_txt();
+                    currx = x_l;
+                    curry = y_asc;
+
+                    ssd1322_print(&chars_in_fb.chars[1], x_l, y_asc, args, &currx, &curry);
+                } else {
+                    override_last_char = 0;
+                    curry += fnt_current.font_height;
+                    currx = x_l;
+                    // skip next newline / space
+                    if (string[chr_idx + 1] == '\n' || string[chr_idx + 1] == ' ') {
+                        override_last_char = string[chr_idx + 1];
+                        ++chars_in_fb.last_char;
+                        *chars_in_fb.last_char = string[chr_idx + 1];
+                        ++chr_idx;
+                    }
                 }
             }
         }
@@ -762,7 +782,7 @@ uint8_t ICACHE_FLASH_ATTR ssd1322_print(const uint8_t* string, const uint16_t x_
         if (curry - fnt_current.font_ascend + fnt_current.font_height >= SSD1322_ROWS) { // no space left, newline type 3
 #if (VERBOSE > 1)
             os_printf("print: newline type 3; no space left (y = %d, need %d)\n",
-                      curry, curry - fnti.font_ascend + fnti.font_height);
+                      curry, curry - fnt_current.font_ascend + fnt_current.font_height);
 #endif
             override_last_char = 0;
             ssd1322_clear_txt();
@@ -819,7 +839,7 @@ uint8_t ICACHE_FLASH_ATTR ssd1322_print(const uint8_t* string, const uint16_t x_
     return 0;
 }
 
-void ssd1322_update_gram(void) {
+void ICACHE_FLASH_ATTR ssd1322_update_gram(void) {
 #if (VERBOSE > 1)
     os_printf("update_gram... segl: %d ... segr: %d; rowb: %d ... rowt: %d\n", fb_upd_reg.seg_left, fb_upd_reg.seg_right,
               fb_upd_reg.row_bottom, fb_upd_reg.row_top);

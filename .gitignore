@@ -1,3 +1,5 @@
 .output
 font.c
 font.h
+assets.c
+assets.h
