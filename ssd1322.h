@@ -19,14 +19,27 @@ typedef enum {
 
 typedef enum {
     SSD1322_DA_NONE     = 0x00,
-    SSD1322_DA_FLIPLR   = 0x01,     // NOT read-only
-    SSD1322_DA_FLIPTB   = 0x02,     // read-only
+    SSD1322_DA_FLIPLR   = 0x01,     // flip bitmap horizontically; NOT read-only
+    SSD1322_DA_FLIPTB   = 0x02,     // flip bitmap vertically; read-only
     SSD1322_DA_INVERT   = 0x04,     // NOT read-only
-    SSD1322_DA_SWENDIAN = 0x08,     // NOT read-only
-    SSD1322_DA_CENTER_Y = 0x10,     // read-only
-    SSD1322_DA_CENTER_X = 0x20      // read-only
+    SSD1322_DA_SWENDIAN = 0x08,     // switch endianness; NOT read-only
+    // /* require SSD1322_DM_FREE:
+    SSD1322_DA_CENTER_Y = 0x10,     // center in textbox vertically; read-only
+    SSD1322_DA_CENTER_X = 0x20,     // center in textbox horizontically; read-only
+    // */
+    SSD1322_DA_CLR      = 0x40,     // clear pixels; supply (single) uint32_t * to a clear value
 } ssd1322_draw_args;
 
+typedef enum {
+    SSD1322_OS_ALL,                 // tag/clear whole framebuffer
+    SSD1322_OS_STAGED,              // clear whole fb, only tag part last updated
+    SSD1322_OS_TEXTBOX              // only clear current textbox region
+} ssd1322_object_specifier;
+
+/** physical layout
+ * SEGS * 8 - 1 >= seg_right > seg_left   >= 0
+ * ROWS - 1     >= row_top   > row_bottom >= 0
+ */
 struct ssd1322_window_phy {
     uint8_t seg_left;
     uint8_t seg_right;
@@ -34,6 +47,18 @@ struct ssd1322_window_phy {
     uint8_t row_top;
 };
 
+/** logical layout
+ * SEGS * 8 - 1 >= x_right  > x_left >= 0
+ * ROWS - 1     >= y_bottom > y_top  >= 0
+ *
+ * |---------------------> x
+ * | (0,0) (1,0) ...
+ * | (0,1) (1,1)
+ * |  ...
+ * |
+ * v
+ * y
+ */
 struct ssd1322_window {
     uint8_t x_left;
     uint8_t x_right;
@@ -44,23 +69,14 @@ struct ssd1322_window {
 struct ssd1322_chars_in_fb;
 
 void ssd1322_init(void);
-
 void ssd1322_reset(void);
-
 void ssd1322_clear(const uint32_t seg_value, const uint8_t fade_out);
-
-void ssd1322_clear_fb(const uint32_t seg_value, const uint8_t staged);
-
-void ssd1322_clear_txt(void);
-
+void ssd1322_clear_fb(const uint32_t seg_value, const ssd1322_object_specifier obj);
+void ssd1322_clear_txt_state(void);
 void ssd1322_send_data(const uint32_t *const qbytes, const uint16_t qbytes_no);
-
 void ssd1322_send_command(const uint8_t *const cmd, const uint8_t cmd_len);
-
 void ssd1322_send_command_list(const uint8_t *const cmd_list, const uint8_t list_len);
-
 void ssd1322_set_area_phy(const struct ssd1322_window_phy *const region);
-
 /**
  * performs transformation ON buf
  * (only uses ssd1322_draw_args which are not read-only)
@@ -68,39 +84,38 @@ void ssd1322_set_area_phy(const struct ssd1322_window_phy *const region);
  */
 uint8_t ssd1322_transform(uint32_t *const buf, const uint16_t height, const uint16_t width, const uint8_t dim,
                           const ssd1322_draw_args args);
-
+/**
+ * translation of region in framebuffer by (x, y)
+ */
+uint8_t ssd1322_translate(const struct ssd1322_window *const region, const int16_t x, const int16_t y);
 /**
  * read-only transformations + draws on FB
  */
 uint8_t ssd1322_draw(const uint16_t x_ul, const uint16_t y_ul, uint32_t *const bitmap,
                      const uint16_t height, const uint16_t width, const ssd1322_draw_args args);
-
 /**
  * fetches bmp from flash + prepares for drawing
  */
 uint8_t ssd1322_draw_bitmap(const uint16_t x_ul, const uint16_t y_ul, uint32_t address,
                             const uint16_t height, const uint16_t width, const ssd1322_draw_args args);
-
+/**
+ * draws rectangle
+ */
+void ssd1322_draw_border(const struct ssd1322_window *const border, const uint32_t pattern);
 /**
  * fetches char + prepares for drawing
  */
 uint8_t ssd1322_draw_char(const struct char_info *const chi, const struct font_info *const fnt,
                           const uint16_t x_origin, const uint16_t y_ascend, const ssd1322_draw_args args);
-
 /**
  * prints a zero-terminated string, latin1 encoding
  */
 uint8_t ssd1322_print(const uint8_t* string, const uint16_t x_l, const uint16_t y_asc,
                       const ssd1322_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re);
-
 void ssd1322_set_textbox(const struct ssd1322_window *const region);
-
 uint8_t ssd1322_unescape(const uint8_t *string, uint8_t *const target);
-
 void ssd1322_set_cursor(const uint16_t x_l, const uint16_t y_asc);
-
 void ssd1322_set_mode(const ssd1322_draw_mode dm);
-
 void ssd1322_update_gram(void);
 
 /**************
