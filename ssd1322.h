@@ -36,9 +36,21 @@ typedef enum {
     SSD1322_OS_TEXTBOX              // only clear current textbox region
 } ssd1322_object_specifier;
 
-/** physical layout
- * SEGS * 8 - 1 >= seg_right > seg_left   >= 0
- * ROWS - 1     >= row_top   > row_bottom >= 0
+typedef enum {
+    SSD1322_AD_N,
+    SSD1322_AD_NW,
+    SSD1322_AD_W,
+    SSD1322_AD_SW,
+    SSD1322_AD_S,
+    SSD1322_AD_SE,
+    SSD1322_AD_E,
+    SSD1322_AD_NE
+} ssd1322_anim_direction;
+
+/**
+ * physical layout (unit: segments)
+ * SEGS - 1 >= seg_right > seg_left   >= 0
+ * ROWS - 1 >= row_top   > row_bottom >= 0
  */
 struct ssd1322_window_phy {
     uint8_t seg_left;
@@ -47,31 +59,35 @@ struct ssd1322_window_phy {
     uint8_t row_top;
 };
 
-/** logical layout
+/**
+ * logical layout (unit: pixels)
  * SEGS * 8 - 1 >= x_right  > x_left >= 0
  * ROWS - 1     >= y_bottom > y_top  >= 0
  *
  * |---------------------> x
- * | (0,0) (1,0) ...
+ * | (0,0) (1,0) (2,0) ...
  * | (0,1) (1,1)
+ * | (0,2)
  * |  ...
- * |
  * v
  * y
  */
 struct ssd1322_window {
-    uint8_t x_left;
-    uint8_t x_right;
-    uint8_t y_bottom;
-    uint8_t y_top;
+    int16_t x_left;
+    int16_t x_right;
+    int16_t y_bottom;
+    int16_t y_top;
 };
 
 struct ssd1322_chars_in_fb;
 
 void ssd1322_init(void);
 void ssd1322_reset(void);
-void ssd1322_clear(const uint32_t seg_value, const uint8_t fade_out);
-void ssd1322_clear_fb(const uint32_t seg_value, const ssd1322_object_specifier obj);
+void ssd1322_set_background(uint32_t pattern);
+void ssd1322_clear(void);
+void ssd1322_anim_clear_with_fadeout(const uint8_t ftype, void (*fadeout_cb)(void));
+void ssd1322_anim_clear_with_toss(const ssd1322_anim_direction dir, void (*toss_cb)(void));
+void ssd1322_clear_fb(const ssd1322_object_specifier obj);
 void ssd1322_clear_txt_state(void);
 void ssd1322_send_data(const uint32_t *const qbytes, const uint16_t qbytes_no);
 void ssd1322_send_command(const uint8_t *const cmd, const uint8_t cmd_len);
@@ -101,7 +117,7 @@ uint8_t ssd1322_draw_bitmap(const uint16_t x_ul, const uint16_t y_ul, uint32_t a
 /**
  * draws rectangle
  */
-void ssd1322_draw_border(const struct ssd1322_window *const border, const uint32_t pattern);
+void ssd1322_draw_rect(const struct ssd1322_window *const border, const uint32_t pattern);
 /**
  * fetches char + prepares for drawing
  */
@@ -252,3 +268,6 @@ void ssd1322_update_gram(void);
 #define _SSD1322_DC_PIN_        BIT2
 #define _SSD1322_RESET_PIN_     BIT12
 #endif
+
+// Animation
+#define SSD1322_ANIM_DELAY_MS 50
