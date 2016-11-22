@@ -6,20 +6,20 @@
 #define XSTR(x) STR(x)  // convert #define into string
 #define STR(x) #x
 
-#define DBG_SHOW_TEXTBOX_BORDER
-#define DBG_SHOW_TEXT_EXTENT
+//#define DBG_SHOW_TEXTBOX_BORDER
+//#define DBG_SHOW_TEXT_EXTENT
 
 struct ssd1322_chars_in_fb {
-    uint8_t chars[SSD1322_MAX_CHARS];
     uint8_t *last_char;
     uint8_t *last_word;     // last 'space'
+    uint8_t chars[SSD1322_MAX_CHARS];
 };
 
 #pragma message "ssd1322 max char buffer size: " XSTR(SSD1322_MAX_CHARS) " bytes"
 
 static uint32_t volatile framebuffer[SSD1322_FBSIZE_INT32] = {0};       // [64][32], row addr x col addr/2 -> 64 x 64*4
 static uint32_t background_pattern = 0;
-static struct ssd1322_window_phy volatile fb_upd_reg;                       // region to upload with update_gram function
+static struct ssd1322_window_phy volatile fb_upd_reg;                   // region to upload with update_gram function
 static struct ssd1322_window_phy volatile fb_upd_reg_old;
 static uint8_t volatile write_to_gram = 0;
 
@@ -199,7 +199,7 @@ void ICACHE_FLASH_ATTR ssd1322_set_area_phy(const struct ssd1322_window_phy *con
 }
 
 
-inline void tag_upd_reg(const struct ssd1322_window_phy *const region) {
+static inline void tag_upd_reg(const struct ssd1322_window_phy *const region) {
     if (region->seg_left < fb_upd_reg.seg_left)
         fb_upd_reg.seg_left = region->seg_left;
     if (region->seg_right > fb_upd_reg.seg_right)
@@ -275,11 +275,13 @@ uint8_t ICACHE_FLASH_ATTR ssd1322_draw(const uint16_t x_ul, const uint16_t y_ul,
 #if (VERBOSE == 3)
     os_printf("buffer info: @(%d|%d); segl: %d, segr: %d, segs: %d, wid: %d, hei: %d\n",
               x_ul, y_ul, seg_l, seg_r, seg_num, width, height);
-    os_printf("bindump:\n");
-    uint32_t i;
-    for (i = 0; i < (height * width + 15) / 16; ++i)
-        os_printf(" 0x%08x\n", bitmap[i]);
-    os_printf("\n");
+    if (!clr) {
+        os_printf("bindump:\n");
+        uint32_t i;
+        for (i = 0; i < (height * width + 15) / 16; ++i)
+            os_printf(" 0x%08x\n", bitmap[i]);
+        os_printf("\n");
+    }
     system_soft_wdt_feed();
     os_printf("fb: 0x%08x; lpad: %d, rpad: %d\n", framebuffer, seg_l_pix, seg_r_pix);
 #endif
@@ -388,11 +390,42 @@ inline uint8_t getpix(uint32_t *seg, uint8_t id) {
     return (uint8_t)((*seg << id * SSD1322_PIXDEPTH) >> (32 - SSD1322_PIXDEPTH));
 }
 
+// convert logical row to physical row
+inline int16_t row_log2phys(int16_t log_row) {
+    return SSD1322_ROWS - 1 - log_row;
+}
+
+// convert whole logical window
+inline struct ssd1322_window_phy region_log2phys(const struct ssd1322_window *const log_region) {
+    return (struct ssd1322_window_phy) {
+        .seg_left = (uint8_t)(log_region->x_left / 8),
+        .seg_right = (uint8_t)(log_region->x_right / 8),
+        .row_top = (uint8_t)row_log2phys(log_region->y_top),
+        .row_bottom = (uint8_t)row_log2phys(log_region->y_bottom),
+    };
+}
+
+static inline void dbg_dump_fb(const struct ssd1322_window *region) {
+    int16_t row, pix;
+    uint8_t pix_id;
+    uint32_t *cbuf;
+    os_printf("framebuffer dump:\nrow\tpix %d .. %d\n", region->x_left, region->x_right);
+    for (row = region->y_top; row <= region->y_bottom; ++row) {
+        os_printf("%03d\t", row);
+        for (pix = region->x_left; pix <= region->x_right; ++pix) {
+            pix_id = pix % 8;
+            cbuf = (uint32_t *)framebuffer + SSD1322_SEGMENTS * row_log2phys(row) + pix / 8;
+            os_printf("%x", getpix(cbuf, pix_id));
+        }
+        os_printf("\n");
+    }
+}
+
 uint8_t ICACHE_FLASH_ATTR ssd1322_transform(uint32_t *const buf, const uint16_t height, const uint16_t width, const uint8_t dim,
                           const ssd1322_draw_args args) {
     uint16_t rowcnt, bufidx;
     uint16_t buflen = (height * width + 7) / 8;
-    uint8_t segs = (width + 7) / 8;
+    uint8_t segs = (uint8_t)((width + 7) / 8);
     uint32_t *currbuf;
     uint32_t *cbufl, *cbufr;
     uint16_t pixl, pixr;
@@ -441,24 +474,15 @@ uint8_t ICACHE_FLASH_ATTR ssd1322_transform(uint32_t *const buf, const uint16_t 
     return 0;
 }
 
-// convert logical row to physical row
-inline uint8_t row_log2phys(uint8_t log_row) {
-    return SSD1322_ROWS - 1 - log_row;
+inline void region_prune(struct ssd1322_window *const region) {
+    region->x_left = (region->x_left < 0) ? 0 : region->x_left;
+    region->x_right = (region->x_right > SSD1322_SEGMENTS * 8 - 1) ? SSD1322_SEGMENTS * 8 - 1 : region->x_right;
+    region->y_top = (region->y_top < 0) ? 0 : region->y_top;
+    region->y_bottom = (region->y_bottom > SSD1322_ROWS - 1) ? SSD1322_ROWS - 1 : region->y_bottom;
 }
 
-// convert whole logical window
-inline struct ssd1322_window_phy region_log2phys(struct ssd1322_window *const log_region) {
-    return (struct ssd1322_window_phy) {
-        .seg_left = (uint8_t)(log_region->x_left / 8),
-        .seg_right = (uint8_t)(log_region->x_right / 8),
-        .row_top = row_log2phys(log_region->y_top),
-        .row_bottom = row_log2phys(log_region->y_bottom),
-    };
-}
-
-// TODO: test
 uint8_t ssd1322_translate(const struct ssd1322_window *const region, const int16_t x, const int16_t y) {
-#if (VERBOSE > 0)
+#if (VERBOSE > 1)
     os_printf("translate: region\n"
               " .xleft: %d\n"
               " .xright: %d\n"
@@ -484,7 +508,7 @@ uint8_t ssd1322_translate(const struct ssd1322_window *const region, const int16
         col_s = region->x_right;
         col_e = region->x_left - 1;
         col_inc = -1;
-    } else if (x > 0 && y < 0) {        // tr -> bl
+    } else if (x >= 0 && y < 0) {        // tr -> bl
         row_s = region->y_top;
         row_e = region->y_bottom + 1;
         row_inc = 1;
@@ -509,19 +533,31 @@ uint8_t ssd1322_translate(const struct ssd1322_window *const region, const int16
         return 1;
     }
 
-    // tag 4 update; TODO: make function?
+    // tag 4 update
     struct ssd1322_window upd_region;
     upd_region.x_left = (x >= 0) ? region->x_left : region->x_left + x;
     upd_region.x_right = (x >= 0) ? region->x_right + x : region->x_right;
     upd_region.y_top = (y >= 0) ? region->y_top : region->y_top + y;
-    upd_region.y_bottom = (y >= 0) ? region->y_top + y : region->y_top;
-    upd_region.x_left = (upd_region.x_left < 0) ? 0 : upd_region.x_left;
-    upd_region.x_right = (upd_region.x_right > SSD1322_SEGMENTS * 8 - 1) ? SSD1322_SEGMENTS * 8 - 1 : upd_region.x_right;
-    upd_region.y_top = (upd_region.y_top < 0) ? 0 : upd_region.y_top;
-    upd_region.y_bottom = (upd_region.y_bottom > SSD1322_ROWS - 1) ? SSD1322_ROWS - 1 : upd_region.y_bottom;
+    upd_region.y_bottom = (y >= 0) ? region->y_bottom + y : region->y_bottom;
+#if (VERBOSE > 1)
+    os_printf("translate: update_region\n"
+              " .xleft: %d\n"
+              " .xright: %d\n"
+              " .ytop: %d\n"
+              " .ybottom: %d\n",
+              upd_region.x_left, upd_region.x_right, upd_region.y_top, upd_region.y_bottom);
+#endif
+    region_prune(&upd_region);
+#if (VERBOSE > 1)
+    os_printf("translate: pruned update_region\n"
+              " .xleft: %d\n"
+              " .xright: %d\n"
+              " .ytop: %d\n"
+              " .ybottom: %d\n",
+              upd_region.x_left, upd_region.x_right, upd_region.y_top, upd_region.y_bottom);
+#endif
     struct ssd1322_window_phy upd_region_phys = region_log2phys(&upd_region);
     tag_upd_reg(&upd_region_phys);
-
     uint32_t *cbufr, *cbufw;            // addresses of read / write segments:
     uint8_t segr_pixid, segw_pixid;     // ID of pixel to be read and to be written
 
@@ -548,6 +584,9 @@ uint8_t ssd1322_translate(const struct ssd1322_window *const region, const int16
             setpix(cbufr, segr_pixid, 0);                           // clear source
         }
     }
+#if (VERBOSE > 1)
+    system_soft_wdt_feed();
+#endif
 
     return 0;
 }
@@ -710,7 +749,6 @@ static struct char_info dotinfo;
 static struct ssd1322_window textbox;
 static ssd1322_draw_mode txt_drawmode = SSD1322_DM_TEXT;
 static uint16_t txt_xpos = 0, txt_ypos = 0;
-static uint16_t txt_x_old, txt_y_old;
 static struct ssd1322_chars_in_fb chars_in_fb;
 
 void ICACHE_FLASH_ATTR ssd1322_clear_txt_state(void) {
@@ -841,7 +879,6 @@ uint8_t ICACHE_FLASH_ATTR ssd1322_print(const uint8_t* string, const uint16_t x_
             if (*chars_in_fb.last_char == ' ' || *chars_in_fb.last_char == '\n')
                 chars_in_fb.last_word = chars_in_fb.last_char;
 
-
             if (currchr == 8) {     // backspace -- well fuck.
                 uint8_t bsnum = 1;  // number of consecutive backspaces
                 uint8_t unesc;
@@ -875,7 +912,7 @@ uint8_t ICACHE_FLASH_ATTR ssd1322_print(const uint8_t* string, const uint16_t x_
 
                 if (line_force_tag && currx + 3 * dotinfo.advance <= textbox.x_right) {
                     // '...' fits
-                    ssd1322_print("...", x_l_tb, y_asc_tb, args, NULL, NULL);
+                    ssd1322_print((uint8_t *)"...", x_l_tb, y_asc_tb, args, NULL, NULL);
 #if (VERBOSE > 1)
                     os_printf("print: skipping done!\n");
 #endif
@@ -1058,7 +1095,7 @@ void ICACHE_FLASH_ATTR fadeout_func(void *arg) {
         ssd1322_clear();
         brightness = SSD1322_MAX_BRIGHTNESS;
         if (fadeout_type == 2)
-            ssd1322_update_gram;
+            ssd1322_update_gram();
         fadeout_callback();
     }
     //os_printf("brightness: %d\n", brightness);
@@ -1068,7 +1105,7 @@ void ICACHE_FLASH_ATTR fadeout_func(void *arg) {
     ssd1322_send_command(cmd, 2);
 }
 
-void ICACHE_FLASH_ATTR ssd1322_anim_clear_with_fadeout(const uint8_t ftype, void (*fadeout_cb)(void)) {
+void ICACHE_FLASH_ATTR ssd1322_clear_with_fadeout_anim(const uint8_t ftype, void (*fadeout_cb)(void)) {
     os_timer_disarm(&fadeout_timer);
     os_timer_setfn(&fadeout_timer, (os_timer_func_t *)fadeout_func, NULL);
     os_timer_arm(&fadeout_timer, SSD1322_ANIM_DELAY_MS, 1);
@@ -1081,7 +1118,7 @@ void ICACHE_FLASH_ATTR ssd1322_anim_clear_with_fadeout(const uint8_t ftype, void
 static os_timer_t volatile toss_timer;
 static uint16_t anim_toss_time = 0;
 static ssd1322_anim_direction toss_dir;
-static struct ssd1322_window toss_region;
+static struct ssd1322_window toss_region, ctoss_region;
 static int16_t toss_x = 0, toss_y = 0;
 static void (*toss_callback)(void);
 
@@ -1092,8 +1129,18 @@ inline uint8_t check_boundaries(const struct ssd1322_window *const region) {
             && (region->y_top < 0 || region->y_top > SSD1322_ROWS - 1));
 }
 
-void ICACHE_FLASH_ATTR toss_func(void *arg) {
-    int16_t move_by = anim_toss_time * anim_toss_time / 1000;
+static void ICACHE_FLASH_ATTR toss_func(void *arg) {
+    ctoss_region.x_left += toss_x;
+    ctoss_region.x_right += toss_x;
+    ctoss_region.y_top += toss_y;
+    ctoss_region.y_bottom += toss_y;
+
+    int16_t move_by = 0;
+    if (anim_toss_time > 100)
+        move_by = (int16_t)(((int32_t)(anim_toss_time - 100) * (int32_t)(anim_toss_time - 100)) / (int32_t)1000);
+#if (VERBOSE > 1)
+    os_printf("toss: move by %d towards %d\n", move_by, toss_dir);
+#endif
     switch(toss_dir) {
     case SSD1322_AD_N:
         toss_y = -move_by; break;
@@ -1116,43 +1163,52 @@ void ICACHE_FLASH_ATTR toss_func(void *arg) {
         toss_y = -move_by;
         toss_x = move_by; break;
     }
-    struct ssd1322_window cregion = (struct ssd1322_window) {
-        .x_left = toss_region.x_left + toss_x,
-        .x_right = toss_region.x_right + toss_x,
-        .y_top = toss_region.y_top + toss_y,
-        .y_bottom = toss_region.y_bottom + toss_y
-    };
-    os_printf("cregion:\n"
+
+#if (VERBOSE > 1)
+    os_printf("toss_region:\n"
               " .xleft: %d\n"
               " .xright: %d\n"
               " .ytop: %d\n"
               " .ybottom: %d\n"
               "animtime: %d\n",
-              cregion.x_left, cregion.x_right, cregion.y_top, cregion.y_bottom, anim_toss_time);
-
-    ssd1322_translate(&cregion, toss_x, toss_y);
-    ssd1322_update_gram();
-    if (check_boundaries(&cregion)) {
-        // everything is outside
+              toss_region.x_left, toss_region.x_right, toss_region.y_top, toss_region.y_bottom, anim_toss_time);
+#endif
+    ssd1322_translate(&toss_region, toss_x, toss_y);
+    if (check_boundaries(&ctoss_region)) { // everything is outside
         os_timer_disarm(&toss_timer);
         anim_toss_time = 0;
+        struct ssd1322_window tb_tmp = textbox;
+        textbox = toss_region;
+        ssd1322_clear_fb(SSD1322_OS_TEXTBOX);
+        textbox = tb_tmp;
+
+        toss_callback();
+
+#if (VERBOSE > 1)
+        dbg_dump_fb(&region_full);
+#endif
     }
+    if (toss_x || toss_y)
+        ssd1322_update_gram();
+
     ++anim_toss_time;
 }
 
-void ICACHE_FLASH_ATTR ssd1322_anim_toss_away(const ssd1322_anim_direction dir, const struct ssd1322_window *const region) {
+void ICACHE_FLASH_ATTR ssd1322_anim_toss_away(const ssd1322_anim_direction dir, const struct ssd1322_window *const region,
+                                              void (*toss_cb)(void)) {
     os_timer_disarm(&toss_timer);
     os_timer_setfn(&toss_timer, (os_timer_func_t *)toss_func, NULL);
     os_timer_arm(&toss_timer, SSD1322_ANIM_DELAY_MS, 1);
     toss_region = *region;
+    ctoss_region = *region;
+    toss_callback = toss_cb;
+    toss_dir = dir;
+    toss_x = 0;
+    toss_y = 0;
 }
 
-void ICACHE_FLASH_ATTR ssd1322_anim_clear_with_toss(const ssd1322_anim_direction dir, void (*toss_cb)(void)) {
-    os_timer_disarm(&toss_timer);
-    os_timer_setfn(&toss_timer, (os_timer_func_t *)toss_func, NULL);
-    os_timer_arm(&toss_timer, SSD1322_ANIM_DELAY_MS, 1);
-    toss_region = region_full;
-    toss_callback = toss_cb;
+void ICACHE_FLASH_ATTR ssd1322_clear_fb_with_toss_anim(const ssd1322_anim_direction dir, void (*toss_cb)(void)) {
+    ssd1322_anim_toss_away(dir, &region_full, toss_cb);
 }
 
 void ICACHE_FLASH_ATTR ssd1322_clear(void) {
@@ -1203,8 +1259,8 @@ void ICACHE_FLASH_ATTR ssd1322_clear_fb(const ssd1322_object_specifier obj) {
 #if (VERBOSE > 1)
         os_printf("ssd1322_clear_fb: TEXTBOX...\n");
 #endif
-        ssd1322_draw(textbox.x_left, row_log2phys(textbox.y_top), &background_pattern, textbox.y_bottom - textbox.y_top,
-                     textbox.x_right - textbox.x_left, SSD1322_DA_CLR);
+        ssd1322_draw(textbox.x_left, row_log2phys(textbox.y_top), &background_pattern, textbox.y_bottom - textbox.y_top + 1,
+                     textbox.x_right - textbox.x_left + 1, SSD1322_DA_CLR);
         break;
     } // switch (obj)
 

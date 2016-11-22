@@ -27,7 +27,7 @@ typedef enum {
     SSD1322_DA_CENTER_Y = 0x10,     // center in textbox vertically; read-only
     SSD1322_DA_CENTER_X = 0x20,     // center in textbox horizontically; read-only
     // */
-    SSD1322_DA_CLR      = 0x40,     // clear pixels; supply (single) uint32_t * to a clear value
+    SSD1322_DA_CLR      = 0x40      // clear pixels; supply (single) uint32_t * to a clear value
 } ssd1322_draw_args;
 
 typedef enum {
@@ -83,12 +83,23 @@ struct ssd1322_chars_in_fb;
 
 void ssd1322_init(void);
 void ssd1322_reset(void);
-void ssd1322_set_background(uint32_t pattern);
+void ssd1322_set_background(uint32_t pattern);  // TODO: test
+
+/**
+ * clear screen but not framebuffer (slow)
+ */
 void ssd1322_clear(void);
-void ssd1322_anim_clear_with_fadeout(const uint8_t ftype, void (*fadeout_cb)(void));
-void ssd1322_anim_clear_with_toss(const ssd1322_anim_direction dir, void (*toss_cb)(void));
+void ssd1322_clear_with_fadeout_anim(const uint8_t ftype, void (*fadeout_cb)(void));
+
+/**
+ * clear framebuffer but not necessarily screen (fast)
+ */
+void ssd1322_clear_fb_with_toss_anim(const ssd1322_anim_direction dir, void (*toss_cb)(void));
 void ssd1322_clear_fb(const ssd1322_object_specifier obj);
+
 void ssd1322_clear_txt_state(void);
+void ssd1322_anim_toss_away(const ssd1322_anim_direction dir, const struct ssd1322_window *const region,
+                                              void (*toss_cb)(void));
 void ssd1322_send_data(const uint32_t *const qbytes, const uint16_t qbytes_no);
 void ssd1322_send_command(const uint8_t *const cmd, const uint8_t cmd_len);
 void ssd1322_send_command_list(const uint8_t *const cmd_list, const uint8_t list_len);
@@ -270,4 +281,4 @@ void ssd1322_update_gram(void);
 #endif
 
 // Animation
-#define SSD1322_ANIM_DELAY_MS 50
+#define SSD1322_ANIM_DELAY_MS 33
