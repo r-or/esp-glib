@@ -97,7 +97,10 @@ void ssd1322_clear_with_fadeout_anim(const uint8_t ftype, void (*fadeout_cb)(voi
 void ssd1322_clear_fb_with_toss_anim(const ssd1322_anim_direction dir, void (*toss_cb)(void));
 void ssd1322_clear_fb(const ssd1322_object_specifier obj);
 
-void ssd1322_clear_txt_state(void);
+/**
+ * reset txt positioning to the ALREADY SELECTED (!) textbox
+ */
+void ssd1322_clear_tb_txt_state(void);
 void ssd1322_anim_toss_away(const ssd1322_anim_direction dir, const struct ssd1322_window *const region,
                                               void (*toss_cb)(void));
 void ssd1322_send_data(const uint32_t *const qbytes, const uint16_t qbytes_no);
@@ -136,9 +139,27 @@ uint8_t ssd1322_draw_char(const struct char_info *const chi, const struct font_i
                           const uint16_t x_origin, const uint16_t y_ascend, const ssd1322_draw_args args);
 /**
  * prints a zero-terminated string, latin1 encoding
+ * relative to the origin set with ssd1322_set_textbox(.)
  */
 uint8_t ssd1322_print(const uint8_t* string, const uint16_t x_l, const uint16_t y_asc,
                       const ssd1322_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re);
+
+#define ssd1322_print_default(string) \
+    ssd1322_clear_fb(SSD1322_OS_ALL); \
+    ssd1322_set_textbox(NULL); \
+    ssd1322_clear_tb_txt_state(); \
+    ssd1322_set_mode(SSD1422_DM_TEXT); \
+    ssd1322_print((uint8_t *)string, 0, _FONT_MAX_CHAR_ASCENT_, \
+        SSD1322_DA_SWENDIAN, NULL, NULL);
+
+#define ssd1322_print_center(string) \
+    ssd1322_clear_fb(SSD1322_OS_ALL); \
+    ssd1322_set_textbox(NULL); \
+    ssd1322_clear_tb_txt_state(); \
+    ssd1322_set_mode(SSD1422_DM_FREE); \
+    ssd1322_print((uint8_t *)string, 0, _FONT_MAX_CHAR_ASCENT_, \
+        (ssd1322_draw_args)(SSD1322_DA_SWENDIAN | SSD1322_DA_CENTER_Y | SSD1322_DA_CENTER_X), NULL, NULL);
+
 void ssd1322_set_textbox(const struct ssd1322_window *const region);
 uint8_t ssd1322_unescape(const uint8_t *string, uint8_t *const target);
 void ssd1322_set_cursor(const uint16_t x_l, const uint16_t y_asc);

@@ -30,6 +30,13 @@ static const struct ssd1322_window_phy default_region_phy = {
     .row_top = 0,
 };
 
+static const struct ssd1322_window_phy max_region_phy = {
+    .seg_left = 0,
+    .seg_right = SSD1322_SEGMENTS - 1,
+    .row_bottom = 0,
+    .row_top = SSD1322_ROWS - 1,
+};
+
 // send stuff to GRAM
 void ssd1322_send_data(const uint32_t *const qbytes, const uint16_t qbytes_no) {
     uint16_t i = 0;
@@ -268,7 +275,7 @@ uint8_t ICACHE_FLASH_ATTR ssd1322_draw(const uint16_t x_ul, const uint16_t y_ul,
        .seg_left = seg_l,
        .seg_right = seg_r,
        .row_top = (uint8_t)y_ul,
-       .row_bottom = (uint8_t)(y_ul - height)
+       .row_bottom = (uint8_t)(y_ul - height + 1)
     };
     tag_upd_reg(&new_reg);
 
@@ -664,7 +671,7 @@ uint8_t ICACHE_FLASH_ATTR ssd1322_draw_char(const struct char_info *const chi, c
         return 1;
     }
 
-#if (VERBOSE > 0)
+#if (VERBOSE > 1)
     uint32_t bench_time = system_get_time();
 #endif
 
@@ -672,14 +679,14 @@ uint8_t ICACHE_FLASH_ATTR ssd1322_draw_char(const struct char_info *const chi, c
     uint16_t y_ul = row_log2phys(y_ascend) + chi->yoffset;
     uint8_t x_ul = x_origin + chi->xoffset;
 
-#if (VERBOSE > 0)
+#if (VERBOSE > 1)
     os_printf("draw_char: fetch char info: %luus\n", system_get_time() - bench_time);
     bench_time = system_get_time();
 #endif
 
     spi_flash_read(FONT_ADDRESS + chi->address, chbuf, chi->length * sizeof(uint8_t));
 
-#if (VERBOSE > 0)
+#if (VERBOSE > 1)
     os_printf("draw_char: fetch char bin: %luus\n", system_get_time() - bench_time);
 #endif
 
@@ -751,7 +758,7 @@ static ssd1322_draw_mode txt_drawmode = SSD1322_DM_TEXT;
 static uint16_t txt_xpos = 0, txt_ypos = 0;
 static struct ssd1322_chars_in_fb chars_in_fb;
 
-void ICACHE_FLASH_ATTR ssd1322_clear_txt_state(void) {
+void ICACHE_FLASH_ATTR ssd1322_clear_tb_txt_state(void) {
     txt_xpos = textbox.x_left;
     txt_ypos = textbox.y_top;
     chars_in_fb.chars[0] = 0;
@@ -763,6 +770,15 @@ void ICACHE_FLASH_ATTR ssd1322_set_textbox(const struct ssd1322_window *const re
         textbox = *region;
     else
         textbox = region_full;
+
+#if (VERBOSE > 1)
+    os_printf("set_textbox:\n"
+              " .ybottom: %d\n"
+              " .ytop: %d\n"
+              " .xright: %d\n"
+              " .xleft: %d\n",
+              textbox.y_bottom, textbox.y_top, textbox.x_right, textbox.x_left);
+#endif
 
     get_font_info(&fnt_current);
     get_char(&dotinfo, '.');
@@ -782,9 +798,6 @@ void ICACHE_FLASH_ATTR ssd1322_set_mode(const ssd1322_draw_mode dm) {
 // draw string inside selected area with offsets
 uint8_t ICACHE_FLASH_ATTR ssd1322_print(const uint8_t* string, const uint16_t x_l, const uint16_t y_asc,
                                         const ssd1322_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re) {
-#if (VERBOSE > 1)
-    os_printf("print: '%s'\n", string);
-#endif
     uint16_t chr_idx;
     uint16_t currx, curry;
     uint16_t x_l_tb = x_l + textbox.x_left;
@@ -807,6 +820,9 @@ uint8_t ICACHE_FLASH_ATTR ssd1322_print(const uint8_t* string, const uint16_t x_
         curry = txt_ypos;
     }
 
+#if (VERBOSE > 1)
+    os_printf("print: '%s' @ (%d,%d) & dm = %d\n", string, currx, curry, txt_drawmode);
+#endif
 
     for (chr_idx = 0; string[chr_idx] != '\0'; ++chr_idx) {
         // check for HTML escape
@@ -856,7 +872,7 @@ uint8_t ICACHE_FLASH_ATTR ssd1322_print(const uint8_t* string, const uint16_t x_
                         *chars_in_fb.last_char = 0; // rewind until now
                         *chars_in_fb.last_word = '\n';
                         ssd1322_clear_fb(SSD1322_OS_TEXTBOX);
-                        ssd1322_clear_txt_state();
+                        ssd1322_clear_tb_txt_state();
                         currx = x_l_tb;
                         curry = y_asc_tb;
 
@@ -901,7 +917,7 @@ uint8_t ICACHE_FLASH_ATTR ssd1322_print(const uint8_t* string, const uint16_t x_
                     chars_in_fb.chars[1] = 0;
                 }
                 ssd1322_clear_fb(SSD1322_OS_TEXTBOX);
-                ssd1322_clear_txt_state();
+                ssd1322_clear_tb_txt_state();
                 currx = x_l_tb;
                 curry = y_asc_tb;
 
@@ -916,7 +932,10 @@ uint8_t ICACHE_FLASH_ATTR ssd1322_print(const uint8_t* string, const uint16_t x_
 #if (VERBOSE > 1)
                     os_printf("print: skipping done!\n");
 #endif
-                    return 1;
+                    // TODO: test multiline
+                    for (; string[chr_idx + 1] != '\0' && string[chr_idx + 1] != '\n'; ++chr_idx);
+                    line_force_tag = 0;
+                    //return 1;
                 }
 #if (VERBOSE > 1)
                 os_printf("print: backspace; to go: '%s'\n", &string[chr_idx]);
@@ -955,7 +974,7 @@ uint8_t ICACHE_FLASH_ATTR ssd1322_print(const uint8_t* string, const uint16_t x_
                       curry, curry - fnt_current.font_ascend + fnt_current.font_height);
 #endif
             override_last_char = 0;
-            ssd1322_clear_txt_state();
+            ssd1322_clear_tb_txt_state();
             if (txt_drawmode == SSD1322_DM_TEXT) {
                 txt_xpos = currx;
                 txt_ypos = curry;
@@ -973,6 +992,9 @@ uint8_t ICACHE_FLASH_ATTR ssd1322_print(const uint8_t* string, const uint16_t x_
         currx += get_kerning(override_last_char, currchr);
         if ((int32_t)currx + (int32_t)chi.xoffset < 0)
             currx -= chi.xoffset;
+#if (VERBOSE > 1)
+        os_printf("print: draw char @ (%d,%d)\n", currx, curry);
+#endif
 
         if (ssd1322_draw_char(&chi, &fnt_current, currx, curry, args)) {
 #if (VERBOSE > 1)
@@ -993,7 +1015,7 @@ uint8_t ICACHE_FLASH_ATTR ssd1322_print(const uint8_t* string, const uint16_t x_
         txt_ypos = curry;
     }
 
-    if (txt_drawmode == SSD1322_DM_FREE) {
+    if (txt_drawmode == SSD1322_DM_FREE) {  // TODO: enable for recursive functionality
         int16_t trans_x = 0, trans_y = 0;
         if (args & SSD1322_DA_CENTER_X) {
             uint8_t string_width = string_max_extent.x_right - string_max_extent.x_left;
@@ -1237,7 +1259,7 @@ void ICACHE_FLASH_ATTR ssd1322_clear_fb(const ssd1322_object_specifier obj) {
 #if (VERBOSE > 1)
         os_printf("ssd1322_clear_fb: ALL...");
 #endif
-        fb_upd_reg = default_region_phy;
+        tag_upd_reg(&max_region_phy);
         for (i = 0; i < SSD1322_FBSIZE_INT32; ++i)
             framebuffer[i] = background_pattern;
 
@@ -1274,7 +1296,7 @@ void ICACHE_FLASH_ATTR ssd1322_reset(void) {
     fb_upd_reg = default_region_phy;
 
     ssd1322_set_textbox(NULL);
-    ssd1322_clear_txt_state();
+    ssd1322_clear_tb_txt_state();
     ssd1322_set_mode(SSD1322_DM_TEXT);
 
     gpio_output_set(0, _SSD1322_RESET_PIN_, _SSD1322_RESET_PIN_, 0);
