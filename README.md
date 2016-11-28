@@ -32,6 +32,8 @@ glib_print("ESP8266 here!",         // latin1-encoded, zero-terminated uint8_t a
                                     // draw arguments: center horizontically & vertically
            NULL,                    // returns coordinates of end of string
            NULL);
+           
+glib_fb2gram();                     // push framebuffer to display graphics RAM (slow)
 
 ```
 \* see https://en.wikipedia.org/wiki/Typeface#Font_metrics
