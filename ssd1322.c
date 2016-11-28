@@ -3,14 +3,6 @@
 #include "driver/spi.h"
 #include "mem.h"
 
-#define XSTR(x) STR(x)  // convert #define into string
-#define STR(x) #x
-
-//#define DBG_SHOW_TEXTBOX_BORDER
-//#define DBG_SHOW_TEXT_EXTENT
-
-#pragma message "ssd1322 max char buffer size: " XSTR(SSD1322_MAX_CHARS) " bytes"
-
 static struct glib_window_phy volatile fb_upd_reg;                   // region to upload with update_gram function
 static struct glib_window_phy volatile fb_upd_reg_old;
 static uint8_t volatile write_to_gram = 0;
@@ -35,17 +27,17 @@ void ssd1322_send_data(const uint32_t *const qbytes, const uint16_t qbytes_no) {
 #if VERBOSE > 1
     os_printf("ssd1322_send_data: sending %lu bytes...\n", qbytes_no * 4);
 #endif
-#if (_SSD1322_IO_ == SSD1322_SPI4WIRE)
+#if (SSD1322_IO == SSD1322_SPI4WIRE)
     if (!write_to_gram) {
         uint8_t cmd = SSD1322_WRITE;
         ssd1322_send_command(&cmd, 0);
         write_to_gram = 1;
-        gpio_output_set(_SSD1322_DC_PIN_, 0, _SSD1322_DC_PIN_, 0); // set D/C line high
+        gpio_output_set(SSD1322_DC_PIN, 0, SSD1322_DC_PIN, 0); // set D/C line high
     }
     for (; i < qbytes_no; ++i) {
         spi_txd(HSPI, 32, qbytes[i]);
     }
-#elif (_SSD1322_IO_ == SSD1322_SPI3WIRE)
+#elif (SSD1322_IO == SSD1322_SPI3WIRE)
     spi_txd(HSPI, 8, SSD1322_WRITE);
     for (; i < bytes_no; ++i)d
         spi_transaction(HSPI, 9, (uint16_t)(bytes[i]) | 0x100, 0, 0, 0, 0, 0, 0);
@@ -55,8 +47,8 @@ void ssd1322_send_data(const uint32_t *const qbytes, const uint16_t qbytes_no) {
 // send stuff to cmd register
 void ICACHE_FLASH_ATTR ssd1322_send_command(const uint8_t *const cmd, const uint8_t cmd_len) {
     write_to_gram = 0;
-#if (_SSD1322_IO_ == SSD1322_SPI4WIRE)
-    gpio_output_set(0, _SSD1322_DC_PIN_, _SSD1322_DC_PIN_, 0);  // set D/C line low
+#if (SSD1322_IO == SSD1322_SPI4WIRE)
+    gpio_output_set(0, SSD1322_DC_PIN, SSD1322_DC_PIN, 0);  // set D/C line low
     spi_transaction(HSPI, 8, cmd[0], 0, 0, 0, 0, 0, 0);
     os_delay_us(1000);
 #if VERBOSE > 1
@@ -65,7 +57,7 @@ void ICACHE_FLASH_ATTR ssd1322_send_command(const uint8_t *const cmd, const uint
 
     uint8_t i = 1;
     if (cmd_len > 1) {
-        gpio_output_set(_SSD1322_DC_PIN_, 0, _SSD1322_DC_PIN_, 0); // set D/C line high
+        gpio_output_set(SSD1322_DC_PIN, 0, SSD1322_DC_PIN, 0); // set D/C line high
         for (; i < cmd_len; ++i) {
             spi_transaction(HSPI, 8, cmd[i], 0, 0, 0, 0, 0, 0);
 
@@ -74,7 +66,7 @@ void ICACHE_FLASH_ATTR ssd1322_send_command(const uint8_t *const cmd, const uint
 #endif
         }
     }
-#elif (_SSD1322_IO_ == SSD1322_SPI3WIRE)
+#elif (SSD1322_IO == SSD1322_SPI3WIRE)
     spi_transaction(HSPI, 9, (uint16_t)cmd[0], 0, 0, 0, 0, 0, 0);
     if (cmd_len > 1 && cmd_len[1]) {
         for (; i < cmd_len; ++i)
@@ -93,9 +85,9 @@ void ICACHE_FLASH_ATTR ssd1322_send_command_list(const uint8_t *const cmd_list, 
     os_printf("ssd1322_send_command_list: sent ");
 #endif
 
-#if (_SSD1322_IO_ == SSD1322_SPI4WIRE)
+#if (SSD1322_IO == SSD1322_SPI4WIRE)
     for (; i < list_len; ++i) {
-        gpio_output_set(0, _SSD1322_DC_PIN_, _SSD1322_DC_PIN_, 0);  // set D/C line low
+        gpio_output_set(0, SSD1322_DC_PIN, SSD1322_DC_PIN, 0);  // set D/C line low
         spi_transaction(HSPI, 8, cmd_list[i], 0, 0, 0, 0, 0, 0);
         os_delay_us(1000);
 #if VERBOSE > 1
@@ -108,7 +100,7 @@ void ICACHE_FLASH_ATTR ssd1322_send_command_list(const uint8_t *const cmd_list, 
             os_printf("[%d]", cmd_list[i + 1]);
 #endif
 
-            gpio_output_set(_SSD1322_DC_PIN_, 0, _SSD1322_DC_PIN_, 0); // set D/C line high
+            gpio_output_set(SSD1322_DC_PIN, 0, SSD1322_DC_PIN, 0); // set D/C line high
             uint8_t k = 0;
             for (; k < cmd_list[i + 1]; ++k) {
                 spi_transaction(HSPI, 8, cmd_list[i + 1 + k + 1], 0, 0, 0, 0, 0, 0);
@@ -121,7 +113,7 @@ void ICACHE_FLASH_ATTR ssd1322_send_command_list(const uint8_t *const cmd_list, 
         }
         i++;
     }
-#elif (_SSD1322_IO_ == SSD1322_SPI3WIRE)
+#elif (SSD1322_IO == SSD1322_SPI3WIRE)
     for (; i < list_len; ++i) {
         spi_transaction(HSPI, 9, cmd[i], 0, 0, 0, 0, 0, 0);
         if (i + 1 < cmd_len && cmd_list[i + 1] && i + 1 + cmd_list[i + 1] < list_len) {
@@ -210,14 +202,14 @@ void glib_set_brightness(const uint8_t value) {
  */
 
 void ICACHE_FLASH_ATTR glib_clear_disp(uint32_t pattern) {
-#if (_SSD1322_MODE_ == 256*64)
+#if (SSD1322_MODE == 256*64)
     uint16_t i = 0;
     ssd1322_set_area_phy(NULL); // reset area
     if (!write_to_gram) {
         uint8_t cmd = SSD1322_WRITE;
         ssd1322_send_command(&cmd, 0);
         write_to_gram = 1;
-        gpio_output_set(_SSD1322_DC_PIN_, 0, _SSD1322_DC_PIN_, 0); // set D/C line high
+        gpio_output_set(SSD1322_DC_PIN, 0, SSD1322_DC_PIN, 0); // set D/C line high
     }
     for (; i < SSD1322_ROWS * SSD1322_SEGMENTS; ++i)
         spi_txd(HSPI, 32, pattern);
@@ -273,14 +265,14 @@ inline int16_t glib_row_log2phys(int16_t log_row) {
 }
 
 inline int16_t glib_col_log2phys(int16_t log_col) {
-    return log_col / 8;
+    return log_col;
 }
 
 // convert whole logical window
 inline struct glib_window_phy glib_region_log2phys(const struct glib_window *const log_region) {
     return (struct glib_window_phy) {
-        .seg_left = (uint8_t)glib_col_log2phys(log_region->x_left),
-        .seg_right = (uint8_t)glib_col_log2phys(log_region->x_right),
+        .seg_left = (uint8_t)glib_col_log2phys(log_region->x_left) / 8,
+        .seg_right = (uint8_t)glib_col_log2phys(log_region->x_right) / 8,
         .row_top = (uint8_t)glib_row_log2phys(log_region->y_top),
         .row_bottom = (uint8_t)glib_row_log2phys(log_region->y_bottom),
     };
@@ -490,9 +482,9 @@ inline uint8_t glib_getpix(uint32_t *seg, uint8_t id) {
 void ICACHE_FLASH_ATTR glib_reset_display(void) {
     fb_upd_reg = default_region_phy;
     os_delay_us(5000);
-    gpio_output_set(0, _SSD1322_RESET_PIN_, _SSD1322_RESET_PIN_, 0);
+    gpio_output_set(0, SSD1322_RESET_PIN, SSD1322_RESET_PIN, 0);
     os_delay_us(5000);
-    gpio_output_set(_SSD1322_RESET_PIN_, 0, _SSD1322_RESET_PIN_, 0);
+    gpio_output_set(SSD1322_RESET_PIN, 0, SSD1322_RESET_PIN, 0);
     os_delay_us(5000);
 #if (VERBOSE > 1)
     os_printf("ssd1322_reset: done\n");
@@ -513,13 +505,13 @@ void ICACHE_FLASH_ATTR glib_init_display(void) {
     // GPIO config... TODO: expand GPIO2 into macro
     PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO2_U, FUNC_GPIO2);
     PIN_FUNC_SELECT(PERIPHS_IO_MUX_MTDI_U, FUNC_GPIO12);
-    gpio_output_set(0, _SSD1322_DC_PIN_, _SSD1322_DC_PIN_, 0);          // set C/R low
-    gpio_output_set(_SSD1322_RESET_PIN_, 0, _SSD1322_RESET_PIN_, 0);    // set reset high
+    gpio_output_set(0, SSD1322_DC_PIN, SSD1322_DC_PIN, 0);          // set C/R low
+    gpio_output_set(SSD1322_RESET_PIN, 0, SSD1322_RESET_PIN, 0);    // set reset high
 
     glib_reset_display();
 
     uint8_t init_commands[] = {
-    #if (_SSD1322_MODE_ == 256*64)
+    #if (SSD1322_MODE == 256*64)
         SSD1322_COM_LOCK,       1,  SSD1322_COM_UNLOCK,
         SSD1322_DISP_OFF,       0,
         SSD1322_COL_ADDR,       2,  0x1C, 0x5B,             // col 28 .. 91
@@ -542,4 +534,5 @@ void ICACHE_FLASH_ATTR glib_init_display(void) {
     #endif
     };
     ssd1322_send_command_list(&(init_commands[0]), sizeof(init_commands) / sizeof(uint8_t));
+    glib_clear_disp(0);
 }

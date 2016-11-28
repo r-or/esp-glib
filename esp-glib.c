@@ -4,23 +4,41 @@
 #include "mem.h"
 #include "font.h"
 
-static uint32_t framebuffer[GLIB_FBSIZE_INT32] = {0};       // [64][32], row addr x col addr/2 -> 64 x 64*4
+#define XSTR(x) STR(x)  // convert #define into string
+#define STR(x) #x
+
+//#define DBG_SHOW_TEXTBOX_BORDER
+//#define DBG_SHOW_TEXT_EXTENT
+
+#pragma message "max char buffer size: " XSTR(GLIB_MAX_CHARS) " bytes"
+#pragma message "pix int32: " XSTR(GLIB_PIX_INT32)
+#pragma message "fb size: " XSTR(GLIB_FBSIZE_INT32) " (" XSTR(GLIB_DISP_COLS_INT32) "x" XSTR(GLIB_DISP_ROWS) ")"
+
+static uint32_t volatile framebuffer[GLIB_FBSIZE_INT32] = {0};       // [64][32], row addr x col addr/2 -> 64 x 64*4
 static uint32_t background_pattern = 0;
 
+static const struct glib_window region_full = {
+    .x_left = GLIB_DISP_COL_LOWER,
+    .x_right = GLIB_DISP_COL_UPPER,
+    .y_bottom = GLIB_DISP_ROW_UPPER,
+    .y_top = GLIB_DISP_ROW_LOWER,
+};
+
 static inline void dbg_dump_fb(const struct glib_window *region) {
-    int16_t row, pix;
+    int16_t row = 0, pix = 0;
     uint8_t pix_id;
     uint32_t *cbuf;
     os_printf("framebuffer dump:\nrow\tpix %d .. %d\n", region->x_left, region->x_right);
     for (row = region->y_top; row <= region->y_bottom; ++row) {
         os_printf("%03d\t", row);
         for (pix = region->x_left; pix <= region->x_right; ++pix) {
-            pix_id = pix % 8;
-            cbuf = (uint32_t *)framebuffer + GLIB_DISP_COLS_INT32 * glib_row_log2phys(row) + pix / GLIB_PIX_INT32;
+            pix_id = pix % GLIB_PIX_INT32;
+            cbuf = (uint32_t *)framebuffer + GLIB_DISP_COLS_INT32 * glib_row_log2phys(row) + glib_col_log2phys(pix) / GLIB_PIX_INT32;
             os_printf("%x", glib_getpix(cbuf, pix_id));
         }
         os_printf("\n");
     }
+    system_soft_wdt_feed();
 }
 
 uint8_t ICACHE_FLASH_ATTR glib_transform(uint32_t *const buf, const uint16_t height, const uint16_t width, const uint8_t dim,
@@ -179,8 +197,8 @@ uint8_t glib_translate(const struct glib_window *const region, const int16_t x, 
 #endif
                 continue;
             }
-            cbufr = (uint32_t *)framebuffer + GLIB_DISP_COLS_INT32 * glib_row_log2phys(crow) + ccol / GLIB_PIX_INT32;
-            cbufw = (uint32_t *)framebuffer + GLIB_DISP_COLS_INT32 * glib_row_log2phys(crow + y) + (ccol + x) / GLIB_PIX_INT32;
+            cbufr = (uint32_t *)framebuffer + GLIB_DISP_COLS_INT32 * glib_row_log2phys(crow) + glib_col_log2phys(ccol) / GLIB_PIX_INT32;
+            cbufw = (uint32_t *)framebuffer + GLIB_DISP_COLS_INT32 * glib_row_log2phys(crow + y) + glib_col_log2phys(ccol + x) / GLIB_PIX_INT32;
             glib_setpix(cbufw, segw_pixid, glib_getpix(cbufr, segr_pixid));   // copy to target
             glib_setpix(cbufr, segr_pixid, 0);                           // clear source
         }
@@ -214,12 +232,12 @@ void ICACHE_FLASH_ATTR glib_draw_rect(const struct glib_window *const border, co
 #endif
 
     // top & bottom
-    glib_draw(framebuffer, border->x_left, glib_row_log2phys(border->y_top), temp, 1, width, GLIB_DA_NONE);
-    glib_draw(framebuffer, border->x_left, glib_row_log2phys(border->y_bottom), temp, 1, width, GLIB_DA_NONE);
+    glib_draw((uint32_t *)framebuffer, border->x_left, border->y_top, temp, 1, width, GLIB_DA_NONE);
+    glib_draw((uint32_t *)framebuffer, border->x_left, border->y_bottom, temp, 1, width, GLIB_DA_NONE);
 
     // left & right
-    glib_draw(framebuffer, border->x_left, glib_row_log2phys(border->y_top), temp, height, 1, GLIB_DA_NONE);
-    glib_draw(framebuffer, border->x_right,  glib_row_log2phys(border->y_top), temp, height, 1, GLIB_DA_NONE);
+    glib_draw((uint32_t *)framebuffer, border->x_left, border->y_top, temp, height, 1, GLIB_DA_NONE);
+    glib_draw((uint32_t *)framebuffer, border->x_right, border->y_top, temp, height, 1, GLIB_DA_NONE);
 
     os_free(temp);
 }
@@ -242,10 +260,10 @@ uint8_t ICACHE_FLASH_ATTR glib_draw_bitmap(const uint16_t x_ul, const uint16_t y
 
     spi_flash_read(BMP_ADDRESS + address, bmtempbuf, buflen * sizeof(uint8_t));
     glib_transform(bmtempbuf, height, width, 0, args);
-    glib_draw(framebuffer, x_ul, glib_row_log2phys(y_ul), bmtempbuf, height, width, args);
+    glib_draw((uint32_t *)framebuffer, x_ul, y_ul, bmtempbuf, height, width, args);
 
 #if (VERBOSE > 1)
-        os_printf("glib_draw_bitmap: drawn @ %d, %d, len: %d\n", x_ul, glib_row_log2phys(y_ul), height * width);
+        os_printf("glib_draw_bitmap: drawn @ %d, %d, len: %d\n", glib_col_log2phys(x_ul), glib_row_log2phys(y_ul), height * width);
 #endif
 
     os_free(bmtempbuf);
@@ -271,7 +289,7 @@ static uint8_t ICACHE_FLASH_ATTR glib_draw_char(const struct char_info *const ch
 #endif
 
     // top -> bottom
-    uint16_t y_ul = glib_row_log2phys(y_ascend) + chi->yoffset;
+    uint16_t y_ul = y_ascend - chi->yoffset;
     uint8_t x_ul = x_origin + chi->xoffset;
 
 #if (VERBOSE > 1)
@@ -304,7 +322,7 @@ static uint8_t ICACHE_FLASH_ATTR glib_draw_char(const struct char_info *const ch
 #endif
 
     glib_transform(chbuf, chi->height, chi->width, 0, args);
-    glib_draw(framebuffer, (uint16_t)x_ul, y_ul, chbuf, (uint16_t)chi->height, (uint16_t)chi->width, args);
+    glib_draw((uint32_t *)framebuffer, (uint16_t)x_ul, y_ul, chbuf, (uint16_t)chi->height, (uint16_t)chi->width, args);
     return 0;
 }
 
@@ -337,12 +355,6 @@ static inline uint8_t glib_unescape(const uint8_t *string, uint8_t *const target
 }
 
 // FONT related states
-static const struct glib_window region_full = {
-    .x_left = GLIB_DISP_COL_LOWER,
-    .x_right = GLIB_DISP_COL_UPPER,
-    .y_bottom = GLIB_DISP_ROW_UPPER,
-    .y_top = GLIB_DISP_ROW_LOWER,
-};
 
 static uint8_t line_count = 0;
 static struct font_info fnt_current;
@@ -651,6 +663,9 @@ uint8_t ICACHE_FLASH_ATTR glib_print(const uint8_t* string, const uint16_t x_l, 
         *x_l_re = currx;
         *y_asc_re = curry;
     }
+#if (VERBOSE > 2)
+    dbg_dump_fb(&region_full);
+#endif
 
     return 0;
 }
@@ -730,7 +745,7 @@ static void ICACHE_FLASH_ATTR toss_func(void *arg) {
 #endif
     }
     if (toss_x || toss_y)
-        glib_update_gram(framebuffer);
+        glib_update_gram((uint32_t *)framebuffer);
 
     ++anim_toss_time;
 }
@@ -771,7 +786,7 @@ static void ICACHE_FLASH_ATTR fadeout_func(void *arg) {
         glib_clear_disp(fadeout_bg);
         brightness = GLIB_MAX_BRIGHTNESS;
         if (fadeout_type == 2)
-            glib_update_gram(framebuffer);
+            glib_update_gram((uint32_t *)framebuffer);
         fadeout_callback();
     }
     glib_set_brightness(brightness);
@@ -821,7 +836,7 @@ void ICACHE_FLASH_ATTR glib_clear_fb(const glib_object_specifier obj) {
 #if (VERBOSE > 1)
         os_printf("glib_clear_fb: TEXTBOX...\n");
 #endif
-        glib_draw(framebuffer, textbox.x_left, glib_row_log2phys(textbox.y_top), &background_pattern, textbox.y_bottom - textbox.y_top + 1,
+        glib_draw((uint32_t *)framebuffer, textbox.x_left, textbox.y_top, &background_pattern, textbox.y_bottom - textbox.y_top + 1,
                      textbox.x_right - textbox.x_left + 1, GLIB_DA_CLR);
         break;
     } // switch (obj)
@@ -838,7 +853,7 @@ void ICACHE_FLASH_ATTR glib_set_background(uint32_t pattern) {
 
 
 void glib_fb2gram(void) {
-    glib_update_gram(framebuffer);
+    glib_update_gram((uint32_t *)framebuffer);
 }
 
 
@@ -856,8 +871,11 @@ void ICACHE_FLASH_ATTR glib_reset(void) {
 
 
 void ICACHE_FLASH_ATTR glib_init(void) {
+    glib_reset();
+    glib_set_textbox(NULL);
+    glib_clear_tb_txt_state();
+    glib_set_mode(GLIB_DM_TEXT);
     glib_init_display();
     uint8_t cmd =  SSD1322_DISP_ON;
     ssd1322_send_command(&cmd, 1);
-    glib_reset();
 }

@@ -2,22 +2,28 @@
 #define __ESP_GLIB_H__
 
 #include "stdint.h"
-#include "ssd1322.h"
+#include "user_config.h"
 
+/*
+ * DRIVER SELECTION
+ */
+#ifdef DISP_SSD1322
+    #include "ssd1322.h"
 
-#define GLIB_DISP_COL_LOWER         0
-#define GLIB_DISP_COL_UPPER         SSD1322_SEGMENTS * 8 - 1
-#define GLIB_DISP_ROW_LOWER         0
-#define GLIB_DISP_ROW_UPPER         SSD1322_ROWS - 1
-#define GLIB_FBSIZE_INT32           SSD1322_SEGMENTS * SSD1322_ROWS
-#define GLIB_PIX_INT32              32 / SSD1322_PIXDEPTH
-#define GLIB_PIX_INT8               8 / SSD1322_PIXDEPTH
-#define GLIB_MAX_BRIGHTNESS         SSD1322_MAX_BRIGHTNESS
-#define GLIB_MAX_CHARS              SSD1322_MAX_CHARS
+    #define GLIB_DISP_COL_LOWER         0
+    #define GLIB_DISP_COL_UPPER         (SSD1322_SEGMENTS * 8 - 1)
+    #define GLIB_DISP_ROW_LOWER         0
+    #define GLIB_DISP_ROW_UPPER         (SSD1322_ROWS - 1)
+    #define GLIB_FBSIZE_INT32           (SSD1322_SEGMENTS * SSD1322_ROWS)
+    #define GLIB_PIX_INT32              (32 / SSD1322_PIXDEPTH)
+    #define GLIB_PIX_INT8               (8 / SSD1322_PIXDEPTH)
+    #define GLIB_MAX_BRIGHTNESS         SSD1322_MAX_BRIGHTNESS
+    #define GLIB_MAX_CHARS              SSD1322_MAX_CHARS
 
-#define GLIB_DISP_COLS              (GLIB_DISP_COL_UPPER - GLIB_DISP_COL_LOWER) + 1
-#define GLIB_DISP_ROWS              (GLIB_DISP_ROW_UPPER - GLIB_DISP_ROW_LOWER) + 1
-#define GLIB_DISP_COLS_INT32        GLIB_DISP_COLS / GLIB_PIX_INT32
+    #define GLIB_DISP_COLS              ((GLIB_DISP_COL_UPPER - GLIB_DISP_COL_LOWER) + 1)
+    #define GLIB_DISP_ROWS              ((GLIB_DISP_ROW_UPPER - GLIB_DISP_ROW_LOWER) + 1)
+    #define GLIB_DISP_COLS_INT32        (GLIB_DISP_COLS / GLIB_PIX_INT32)
+#endif
 
 // Animation
 #define GLIB_ANIM_DELAY_MS          33

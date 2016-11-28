@@ -129,8 +129,8 @@ void ssd1322_send_command_list(const uint8_t *const cmd_list, const uint8_t list
 #endif
 
 // resolution
-#ifndef _SSD1322_MODE_
-#define _SSD1322_MODE_          256*64
+#ifndef SSD1322_MODE
+#define SSD1322_MODE          256*64
 #define SSD1322_PIXDEPTH        4
 #define SSD1322_COL_SEG_START   0x1C    // 28
 #define SSD1322_COL_SEG_END     0x5B    // 91
@@ -145,8 +145,8 @@ void ssd1322_send_command_list(const uint8_t *const cmd_list, const uint8_t list
 #endif
 
 // IO modes
-#ifndef _SSD1322_IO_        // do not change right now!
-#define _SSD1322_IO_            SSD1322_SPI4WIRE
-#define _SSD1322_DC_PIN_        BIT2
-#define _SSD1322_RESET_PIN_     BIT12
+#ifndef SSD1322_IO        // do not change right now!
+#define SSD1322_IO            SSD1322_SPI4WIRE
+#define SSD1322_DC_PIN        BIT2
+#define SSD1322_RESET_PIN     BIT12
 #endif
