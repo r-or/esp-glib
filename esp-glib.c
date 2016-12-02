@@ -24,7 +24,7 @@ static const struct glib_window region_full = {
     .y_top = GLIB_DISP_ROW_LOWER,
 };
 
-static inline void dbg_dump_fb(const struct glib_window *region) {
+static void ICACHE_FLASH_ATTR dbg_dump_fb(const struct glib_window *region) {
     int16_t row = 0, pix = 0;
     uint8_t pix_id;
     uint32_t *cbuf;
@@ -94,14 +94,14 @@ uint8_t ICACHE_FLASH_ATTR glib_transform(uint32_t *const buf, const uint16_t hei
     return 0;
 }
 
-inline void region_prune(struct glib_window *const region) {
+inline void ICACHE_FLASH_ATTR region_prune(struct glib_window *const region) {
     region->x_left = (region->x_left < 0) ? 0 : region->x_left;
     region->x_right = (region->x_right > GLIB_DISP_COL_UPPER) ? GLIB_DISP_COL_UPPER : region->x_right;
     region->y_top = (region->y_top < 0) ? 0 : region->y_top;
     region->y_bottom = (region->y_bottom > GLIB_DISP_ROW_UPPER) ? GLIB_DISP_ROW_UPPER : region->y_bottom;
 }
 
-uint8_t glib_translate(const struct glib_window *const region, const int16_t x, const int16_t y) {
+uint8_t ICACHE_FLASH_ATTR glib_translate(const struct glib_window *const region, const int16_t x, const int16_t y) {
 #if (VERBOSE > 1)
     os_printf("translate: region\n"
               " .xleft: %d\n"
@@ -847,7 +847,7 @@ void ICACHE_FLASH_ATTR glib_clear_fb(const glib_object_specifier obj) {
 }
 
 
-void ICACHE_FLASH_ATTR glib_set_background(uint32_t pattern) {
+void ICACHE_FLASH_ATTR glib_set_background(const uint32_t pattern) {
     background_pattern = pattern;
 }
 
@@ -876,6 +876,5 @@ void ICACHE_FLASH_ATTR glib_init(void) {
     glib_clear_tb_txt_state();
     glib_set_mode(GLIB_DM_TEXT);
     glib_init_display();
-    uint8_t cmd =  SSD1322_DISP_ON;
-    ssd1322_send_command(&cmd, 1);
+    glib_set_enable(1);
 }

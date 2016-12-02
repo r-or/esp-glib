@@ -138,7 +138,7 @@ void ssd1322_send_command_list(const uint8_t *const cmd_list, const uint8_t list
 #define SSD1322_ROW_END         0x3F    // 63
 #define SSD1322_SEGMENTS        32
 #define SSD1322_ROWS            64
-#define SSD1322_MAX_BRIGHTNESS  127
+#define SSD1322_MAX_BRIGHTNESS  200
 #define SSD1322_FBSIZE_INT32    SSD1322_SEGMENTS * SSD1322_ROWS                             // 2048
 #define SSD1322_MAX_CHARS       (((SSD1322_SEGMENTS * 8) / _FONT_MIN_CHAR_WIDTH_) * \
                                     (SSD1322_ROWS / _FONT_MAX_CHAR_HEIGHT_)) + 2            // floor

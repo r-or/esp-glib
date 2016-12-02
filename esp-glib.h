@@ -4,6 +4,10 @@
 #include "stdint.h"
 #include "user_config.h"
 
+#ifndef VERBOSE
+    #define VERBOSE 0
+#endif
+
 /*
  * DRIVER SELECTION
  */
@@ -43,8 +47,8 @@ struct glib_chars_in_fb {
 
 /**
  * logical layout (unit: pixels)
- * SEGS * 8 - 1 >= x_right  > x_left >= 0
- * ROWS - 1     >= y_bottom > y_top  >= 0
+ * COL_UPPER >= x_right  > x_left >= COL_LOWER
+ * ROW_UPPER >= y_bottom > y_top  >= ROW_LOWER
  *
  * |---------------------> x
  * | (0,0) (1,0) (2,0) ...
@@ -62,7 +66,7 @@ struct glib_window {
 };
 
 /**
- * physical layout (unit: segments)
+ * physical layout (unit: segments, or 32 bit wide 'pixel words')
  * SEGS - 1 >= seg_right > seg_left   >= 0
  * ROWS - 1 >= row_top   > row_bottom >= 0
  */
@@ -112,17 +116,18 @@ typedef enum {
 /**
  * read-only transformations + draws on FB
  */
-uint8_t glib_draw(uint32_t * const framebuffer, const uint16_t x_ul, const uint16_t y_ul, uint32_t *const bitmap,
+uint8_t glib_draw(uint32_t *const to_buf, const uint16_t x_ul, const uint16_t y_ul, uint32_t *const bitmap,
                   const uint16_t height, const uint16_t width, const glib_draw_args args);
-void glib_setpix(uint32_t *seg, uint8_t id, uint8_t value);
-uint8_t glib_getpix(uint32_t *seg, uint8_t id);
-int16_t glib_row_log2phys(int16_t log_row);
-int16_t glib_col_log2phys(int16_t log_col);
+void glib_setpix(uint32_t *const seg, uint8_t id, const uint8_t value);
+uint8_t glib_getpix(const uint32_t *const seg, const uint8_t id);
+int16_t glib_row_log2phys(const int16_t log_row);
+int16_t glib_col_log2phys(const int16_t log_col);
 struct glib_window_phy glib_region_log2phys(const struct glib_window *const log_region);
 void glib_tag_upd_reg_log(const struct glib_window *const region);
 void glib_update_gram(uint32_t *const framebuffer);
 void glib_set_brightness(const uint8_t value);
-void glib_clear_disp(uint32_t pattern);
+void glib_set_enable(const uint8_t enable);
+void glib_clear_disp(const uint32_t pattern);
 void glib_reset_display(void);
 void glib_init_display(void);
 
@@ -223,7 +228,7 @@ void glib_set_mode(const glib_draw_mode dm);
 /**
  *
  */
-void glib_set_background(uint32_t pattern);  // TODO: test
+void glib_set_background(const uint32_t pattern);  // TODO: test
 
 /**
  * calls glib_update_gram(.)

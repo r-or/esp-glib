@@ -22,7 +22,7 @@ static const struct glib_window_phy max_region_phy = {
 };
 
 // send stuff to GRAM
-void ssd1322_send_data(const uint32_t *const qbytes, const uint16_t qbytes_no) {
+void ICACHE_FLASH_ATTR ssd1322_send_data(const uint32_t *const qbytes, const uint16_t qbytes_no) {
     uint16_t i = 0;
 #if VERBOSE > 1
     os_printf("ssd1322_send_data: sending %lu bytes...\n", qbytes_no * 4);
@@ -189,7 +189,13 @@ static void ICACHE_FLASH_ATTR ssd1322_set_area_phy(const struct glib_window_phy 
 #endif
 }
 
-void glib_set_brightness(const uint8_t value) {
+
+
+/*
+ * IMPLEMENTATION OF GLIB FUNCTIONALITY
+ */
+
+void ICACHE_FLASH_ATTR glib_set_brightness(const uint8_t value) {
     uint8_t cmd[] = {
         SSD1322_CONTRAST, value,
     };
@@ -197,11 +203,17 @@ void glib_set_brightness(const uint8_t value) {
 }
 
 
-/*
- * IMPLEMENTATION OF GLIB FUNCTIONALITY
- */
+void ICACHE_FLASH_ATTR glib_set_enable(const uint8_t enable) {
+    uint8_t cmd;
+    if (enable)
+        cmd = SSD1322_DISP_ON;
+    else
+        cmd = SSD1322_DISP_OFF;
+    ssd1322_send_command(&cmd, 1);
+}
 
-void ICACHE_FLASH_ATTR glib_clear_disp(uint32_t pattern) {
+
+void ICACHE_FLASH_ATTR glib_clear_disp(const uint32_t pattern) {
 #if (SSD1322_MODE == 256*64)
     uint16_t i = 0;
     ssd1322_set_area_phy(NULL); // reset area
@@ -260,11 +272,11 @@ void ICACHE_FLASH_ATTR glib_update_gram(uint32_t *const framebuffer) {
 }
 
 // convert logical row to physical row
-inline int16_t glib_row_log2phys(int16_t log_row) {
+inline int16_t glib_row_log2phys(const int16_t log_row) {
     return SSD1322_ROWS - 1 - log_row;
 }
 
-inline int16_t glib_col_log2phys(int16_t log_col) {
+inline int16_t glib_col_log2phys(const int16_t log_col) {
     return log_col;
 }
 
@@ -304,7 +316,7 @@ void glib_tag_upd_reg_log(const struct glib_window *const region) {
     tag_upd_reg(&tmp);
 }
 
-uint8_t ICACHE_FLASH_ATTR glib_draw(uint32_t *const framebuffer, const uint16_t x_ul, const uint16_t y_ul, uint32_t *const bitmap,
+uint8_t ICACHE_FLASH_ATTR glib_draw(uint32_t *const to_buf, const uint16_t x_ul, const uint16_t y_ul, uint32_t *const bitmap,
                                     const uint16_t height, const uint16_t width, const glib_draw_args args) {
     if (!height || !width)
         return 0;
@@ -384,7 +396,7 @@ uint8_t ICACHE_FLASH_ATTR glib_draw(uint32_t *const framebuffer, const uint16_t 
             if (curr_seg > SSD1322_SEGMENTS - 1) // out of x boundaries
                 continue;
 
-            currfb = framebuffer + SSD1322_SEGMENTS * (y_ul_ph - pix_idx_y) + seg_l + curr_seg;
+            currfb = to_buf + SSD1322_SEGMENTS * (y_ul_ph - pix_idx_y) + seg_l + curr_seg;
 #if (VERBOSE == 4)
             os_printf(" 0x%08x (0x%08x) -> 0x%08x |", currbuf, *currbuf, currfb);
 #endif
@@ -467,14 +479,14 @@ uint8_t ICACHE_FLASH_ATTR glib_draw(uint32_t *const framebuffer, const uint16_t 
 }
 
 
-inline void glib_setpix(uint32_t *seg, uint8_t id, uint8_t value) {
+inline void glib_setpix(uint32_t *const seg, uint8_t id, const uint8_t value) {
     // clear pix
     *seg &= ~((uint32_t)0xF << ((32 - SSD1322_PIXDEPTH) - id * SSD1322_PIXDEPTH));
     // set new val
     *seg |= (uint32_t)value << ((32 - SSD1322_PIXDEPTH) - id * SSD1322_PIXDEPTH);
 }
 
-inline uint8_t glib_getpix(uint32_t *seg, uint8_t id) {
+inline uint8_t glib_getpix(const uint32_t* const seg, const uint8_t id) {
     return (uint8_t)((*seg << id * SSD1322_PIXDEPTH) >> (32 - SSD1322_PIXDEPTH));
 }
 

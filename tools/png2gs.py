@@ -512,13 +512,13 @@ st.create_meta('assets', sof)
 #    body = '#include "user_interface.h"\n\n' + body
 # 
 #defs += \
-#    '#define _FONT_{}_\n' \
-#    '#define _FONT_MAX_CHAR_SIZE_INT8_ \t{}\t// bytes to store biggest char (2D)\n' \
-#    '#define _FONT_MAX_CHAR_SIZE_INT32_ \t{}\n' \
-#    '#define _FONT_MAX_CHAR_WIDTH_ \t{}\t// pix\n' \
-#    '#define _FONT_MAX_CHAR_HEIGHT_ \t{}\t// pix\n' \
-#    '#define _FONT_MIN_CHAR_WIDTH_ \t{}\t// useful for worst case num of printable chars (min advance)\n' \
-#    '#define _FONT_MAX_CHAR_ASCENT_ \t{}\t// max char height with respect to base line (for cursor placement)\n' \
+#    '#define FONT_{}\n' \
+#    '#define FONT_MAX_CHAR_SIZE_INT8 \t{}\t// bytes to store biggest char (2D)\n' \
+#    '#define FONT_MAX_CHAR_SIZE_INT32 \t{}\n' \
+#    '#define FONT_MAX_CHAR_WIDTH \t{}\t// pix\n' \
+#    '#define FONT_MAX_CHAR_HEIGHT \t{}\t// pix\n' \
+#    '#define FONT_MIN_CHAR_WIDTH \t{}\t// useful for worst case num of printable chars (min advance)\n' \
+#    '#define FONT_MAX_CHAR_ASCENT \t{}\t// max char height with respect to base line (for cursor placement)\n' \
 #    '\n'.format(fontname.upper(), maxfontlen, math.ceil(maxfontlen / 4), \
 #        maxfontwidth, maxfontheight, minfontwidth, maxfontascent);
 # 
