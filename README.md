@@ -9,7 +9,7 @@ Included are right now:
   * textbox support
   * line-break on words
   * backspace support
-  * ...(https://en.wikipedia.org/wiki/Typeface#Font_metrics)
+  * ...
 * Some simple animations
 * Some primitives
 * driver for SSD1322. SPI is done with [MetalPhreak's](https://github.com/MetalPhreak/ESP8266_SPI_Driver) SPI  driver.
@@ -20,7 +20,7 @@ Usage:
 // user_init:
 glib_init();
 
-// example: print to a screen
+// example: print to a screen(https://en.wikipedia.org/wiki/Typeface#Font_metrics)
 glib_clear_fb(GLIB_OS_ALL);         // clear everything in framebuffer
 glib_set_textbox(NULL);             // set current textbox to whole screen
 glib_clear_tb_txt_state();          // clear current text positioning information
