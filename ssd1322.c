@@ -24,7 +24,7 @@ static const struct glib_window_phy max_region_phy = {
 // send stuff to GRAM
 void ICACHE_FLASH_ATTR ssd1322_send_data(const uint32_t *const qbytes, const uint16_t qbytes_no) {
     uint16_t i = 0;
-#if VERBOSE > 1
+#if (VERBOSE > 1)
     os_printf("ssd1322_send_data: sending %lu bytes...\n", qbytes_no * 4);
 #endif
 #if (SSD1322_IO == SSD1322_SPI4WIRE)
@@ -33,13 +33,23 @@ void ICACHE_FLASH_ATTR ssd1322_send_data(const uint32_t *const qbytes, const uin
         ssd1322_send_command(&cmd, 0);
         write_to_gram = 1;
         gpio_output_set(SSD1322_DC_PIN, 0, SSD1322_DC_PIN, 0); // set D/C line high
+        os_delay_us(1000);
     }
-    for (; i < qbytes_no; ++i) {
+
+#if (VERBOSE > 2)
+    for (i = 0; i < qbytes_no; ++i) {
+        os_printf("%08x", qbytes[i]);
+        if (!((i + 1) % (fb_upd_reg.seg_right - fb_upd_reg.seg_left + 1)))
+            os_printf("\n");
+    }
+#endif
+
+    for (i = 0; i < qbytes_no; ++i) {
         spi_txd(HSPI, 32, qbytes[i]);
     }
 #elif (SSD1322_IO == SSD1322_SPI3WIRE)
     spi_txd(HSPI, 8, SSD1322_WRITE);
-    for (; i < bytes_no; ++i)d
+    for (i = 0; i < bytes_no; ++i)d
         spi_transaction(HSPI, 9, (uint16_t)(bytes[i]) | 0x100, 0, 0, 0, 0, 0, 0);
 #endif
 }
@@ -49,6 +59,7 @@ void ICACHE_FLASH_ATTR ssd1322_send_command(const uint8_t *const cmd, const uint
     write_to_gram = 0;
 #if (SSD1322_IO == SSD1322_SPI4WIRE)
     gpio_output_set(0, SSD1322_DC_PIN, SSD1322_DC_PIN, 0);  // set D/C line low
+    os_delay_us(1000);
     spi_transaction(HSPI, 8, cmd[0], 0, 0, 0, 0, 0, 0);
     os_delay_us(1000);
 #if VERBOSE > 1
@@ -158,8 +169,12 @@ static void ICACHE_FLASH_ATTR ssd1322_set_area_phy(const struct glib_window_phy 
         }
         // check if window changed
         if (region->row_bottom == fb_upd_reg_old.row_bottom && region->row_top == fb_upd_reg_old.row_top
-                && region->seg_left == fb_upd_reg_old.seg_left && region->seg_right == fb_upd_reg_old.seg_right)
+                && region->seg_left == fb_upd_reg_old.seg_left && region->seg_right == fb_upd_reg_old.seg_right) {
+#if (VERBOSE > 1)
+            os_printf("ssd1322_set_area: nothing to be done!\n");
+#endif
             return;
+        }
         fb_upd_reg_old = *region;
         uint8_t commands[] = {
             // col address is segmented in 2bytes or 4 pixels for whatever reason
@@ -168,6 +183,14 @@ static void ICACHE_FLASH_ATTR ssd1322_set_area_phy(const struct glib_window_phy 
             SSD1322_ROW_ADDR,   2,  SSD1322_ROW_START + region->row_bottom,
                                     SSD1322_ROW_START + region->row_top
         };
+#if (VERBOSE > 1)
+        os_printf("ssd1322_set_area: setting to\n"
+                  " .left: %d\n"
+                  " .right: %d\n"
+                  " .bottom: %d\n"
+                  " .top: %d\n",
+                  commands[2], commands[3], commands[6], commands[7]);
+#endif
         ssd1322_send_command_list(commands, sizeof(commands) / sizeof(uint8_t));
     } else {
         fb_upd_reg_old = (struct glib_window_phy) {
@@ -246,7 +269,7 @@ void ICACHE_FLASH_ATTR glib_update_gram(uint32_t *const framebuffer) {
     ssd1322_set_area_phy((struct glib_window_phy *)&fb_upd_reg);
 
     // check how much stuff changed
-    if ((fb_upd_reg.seg_right - fb_upd_reg.seg_left) * (fb_upd_reg.row_bottom - fb_upd_reg.row_top)
+    if ((fb_upd_reg.seg_right - fb_upd_reg.seg_left) * (fb_upd_reg.row_top - fb_upd_reg.row_bottom)
             > (SSD1322_SEGMENTS * SSD1322_ROWS) / 2) {
         // write whole framebuffer
         ssd1322_send_data(framebuffer, SSD1322_SEGMENTS * SSD1322_ROWS);
@@ -291,6 +314,9 @@ inline struct glib_window_phy glib_region_log2phys(const struct glib_window *con
 }
 
 static inline void tag_upd_reg(const struct glib_window_phy *const region) {
+#if (VERBOSE > 1)
+    struct glib_window_phy old = fb_upd_reg;
+#endif
     if (region->seg_left < fb_upd_reg.seg_left)
         fb_upd_reg.seg_left = region->seg_left;
     if (region->seg_right > fb_upd_reg.seg_right)
@@ -301,13 +327,15 @@ static inline void tag_upd_reg(const struct glib_window_phy *const region) {
         fb_upd_reg.row_bottom = region->row_bottom;
 
 #if (VERBOSE > 1)
-    os_printf("tag updatereg: NEW => result\n"
-              " %d\t=> .segleft = %d\n"
-              " %d\t=> .segright = %d\n"
-              " %d\t=> .rowtop = %d\n"
-              " %d\t=> .rowbottom = %d\n",
-              region->seg_left, fb_upd_reg.seg_left, region->seg_right, fb_upd_reg.seg_right,
-              region->row_top, fb_upd_reg.row_top, region->row_bottom, fb_upd_reg.row_bottom);
+    os_printf("tag updatereg: OLD|NEW => result\n"
+              " .segleft:   %2d|%2d => %2d\n"
+              " .segright:  %2d|%2d => %2d\n"
+              " .rowtop:    %2d|%2d => %2d\n"
+              " .rowbottom: %2d|%2d => %2d\n",
+              old.seg_left, region->seg_left, fb_upd_reg.seg_left,
+              old.seg_right, region->seg_right, fb_upd_reg.seg_right,
+              old.row_top, region->row_top, fb_upd_reg.row_top,
+              old.row_bottom, region->row_bottom, fb_upd_reg.row_bottom);
 #endif
 }
 

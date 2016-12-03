@@ -2,13 +2,13 @@
 #include "user_interface.h"
 #include "osapi.h"
 #include "mem.h"
-#include "font.h"
+#include "../resource/font.h"
 
 #define XSTR(x) STR(x)  // convert #define into string
 #define STR(x) #x
 
-//#define DBG_SHOW_TEXTBOX_BORDER
-//#define DBG_SHOW_TEXT_EXTENT
+#define DBG_SHOW_TEXTBOX_BORDER
+#define DBG_SHOW_TEXT_EXTENT
 
 #pragma message "max char buffer size: " XSTR(GLIB_MAX_CHARS) " bytes"
 #pragma message "pix int32: " XSTR(GLIB_PIX_INT32)
@@ -183,7 +183,7 @@ uint8_t ICACHE_FLASH_ATTR glib_translate(const struct glib_window *const region,
     crow = row_s;
     for (crow = row_s; crow != row_e; crow += row_inc) {
         if (crow + y < 0 || crow + y > GLIB_DISP_ROW_UPPER) { // out of y boundary
-#if (VERBOSE > 1)
+#if (VERBOSE > 2)
             os_printf("transl: skip row %d\n", crow + y);
 #endif
             continue;
@@ -192,7 +192,7 @@ uint8_t ICACHE_FLASH_ATTR glib_translate(const struct glib_window *const region,
             segr_pixid = ccol % GLIB_PIX_INT32;
             segw_pixid = (ccol + x) % GLIB_PIX_INT32;
             if (ccol + x < 0 || ccol + x > GLIB_DISP_COL_UPPER) { // out of x boundary
-#if (VERBOSE > 1)
+#if (VERBOSE > 2)
                 os_printf("transl: skip col %d\n", ccol + x);
 #endif
                 continue;
@@ -265,7 +265,9 @@ uint8_t ICACHE_FLASH_ATTR glib_draw_bitmap(const uint16_t x_ul, const uint16_t y
 #if (VERBOSE > 1)
         os_printf("glib_draw_bitmap: drawn @ %d, %d, len: %d\n", glib_col_log2phys(x_ul), glib_row_log2phys(y_ul), height * width);
 #endif
-
+#if (VERBOSE > 2)
+    dbg_dump_fb(&region_full);
+#endif
     os_free(bmtempbuf);
     return 0;
 }
@@ -678,7 +680,7 @@ static struct glib_window toss_region, ctoss_region;
 static int16_t toss_x = 0, toss_y = 0;
 static void (*toss_callback)(void);
 
-inline uint8_t check_boundaries(const struct glib_window *const region) {
+inline uint8_t all_outside_boundaries(const struct glib_window *const region) {
     return ((region->x_left < 0 || region->x_left > GLIB_DISP_COL_UPPER)
             && (region->x_right < 0 || region->x_right > GLIB_DISP_COL_UPPER))
         || ((region->y_bottom < 0 || region->y_bottom > GLIB_DISP_ROW_UPPER)
@@ -730,23 +732,19 @@ static void ICACHE_FLASH_ATTR toss_func(void *arg) {
               toss_region.x_left, toss_region.x_right, toss_region.y_top, toss_region.y_bottom, anim_toss_time);
 #endif
     glib_translate(&toss_region, toss_x, toss_y);
-    if (check_boundaries(&ctoss_region)) { // everything is outside
+    if (all_outside_boundaries(&ctoss_region)) { // everything is outside
         os_timer_disarm(&toss_timer);
         anim_toss_time = 0;
         struct glib_window tb_tmp = textbox;
         textbox = toss_region;
         glib_clear_fb(GLIB_OS_TEXTBOX);
         textbox = tb_tmp;
-
         toss_callback();
-
-#if (VERBOSE > 1)
-        dbg_dump_fb(&region_full);
-#endif
     }
     if (toss_x || toss_y)
         glib_update_gram((uint32_t *)framebuffer);
 
+    system_soft_wdt_feed();
     ++anim_toss_time;
 }
 
