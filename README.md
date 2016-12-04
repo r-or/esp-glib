@@ -9,7 +9,7 @@ Included are right now:
   * textbox support
   * line-break on words
   * backspace support
-  * UTF-8 support (escape with 'u+xxxx' or 'U+xxxxxxxx')
+  * UTF-8 support (escape with 'u+xxxx' or 'U+xxxxxxxx')
   * ...
 * Some simple animations
 * Some primitives
