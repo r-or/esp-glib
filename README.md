@@ -9,7 +9,8 @@ Included are right now:
   * textbox support
   * line-break on words
   * backspace support
-  * ...
+  * UTF-8 support (escape with 'u+xxxx' or 'U+xxxxxxxx')
+  * ...
 * Some simple animations
 * Some primitives
 * driver for SSD1322. SPI is done with [MetalPhreak's](https://github.com/MetalPhreak/ESP8266_SPI_Driver) SPI  driver.
