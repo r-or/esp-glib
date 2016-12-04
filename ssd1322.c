@@ -1,3 +1,11 @@
+/*
+ *
+ * License: MIT / x11
+ * Copyright 2016 Tobias Däullary
+ *
+ */
+
+
 #include "user_config.h"
 #include "ssd1322.h"
 #include "driver/spi.h"

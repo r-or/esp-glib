@@ -1,3 +1,11 @@
+/*
+ *
+ * License: MIT / x11
+ * Copyright 2016 Tobias Däullary
+ *
+ */
+
+
 #include "esp-glib.h"
 #include "user_interface.h"
 #include "osapi.h"
