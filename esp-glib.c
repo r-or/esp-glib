@@ -15,10 +15,10 @@
 #define XSTR(x) STR(x)  // convert #define into string
 #define STR(x) #x
 
-#define DBG_SHOW_TEXTBOX_BORDER
-#define DBG_SHOW_TEXT_EXTENT
+//#define DBG_SHOW_TEXTBOX_BORDER
+//#define DBG_SHOW_TEXT_EXTENT
 
-#pragma message "max char buffer size: " XSTR(GLIB_MAX_CHARS) " bytes"
+#pragma message "max char buffer size: " XSTR(GLIB_MAX_CHARS) " qbytes"
 #pragma message "pix int32: " XSTR(GLIB_PIX_INT32)
 #pragma message "fb size: " XSTR(GLIB_FBSIZE_INT32) " (" XSTR(GLIB_DISP_COLS_INT32) "x" XSTR(GLIB_DISP_ROWS) ")"
 
@@ -47,6 +47,16 @@ static void ICACHE_FLASH_ATTR dbg_dump_fb(const struct glib_window *region) {
         os_printf("\n");
     }
     system_soft_wdt_feed();
+}
+
+static void ICACHE_FLASH_ATTR dbg_print_utf8(const uint32_t *const string) {
+    uint8_t idx = 0;
+    for (idx = 0; string[idx] != '\0'; ++idx) {
+        if (string[idx] < 128)
+            os_printf("%c", string[idx]);
+        else
+            os_printf("(U+%x)", string[idx]);
+    }
 }
 
 uint8_t ICACHE_FLASH_ATTR glib_transform(uint32_t *const buf, const uint16_t height, const uint16_t width, const uint8_t dim,
@@ -337,35 +347,7 @@ static uint8_t ICACHE_FLASH_ATTR glib_draw_char(const struct char_info *const ch
 }
 
 
-static inline uint8_t ishex(uint8_t chr) {
-    return (chr >= '0' && chr <= '9') ||
-            (chr >= 'A' && chr <= 'F') ||
-            (chr >= 'a' && chr <= 'f');
-}
-
-
-static inline uint8_t hex2int(uint8_t chr) {
-    if (chr >= '0' && chr <= '9')
-        return chr - '0';
-    if (chr >= 'A' && chr <= 'F')
-        return chr - 'A' + 10;
-    if (chr >= 'a' && chr <= 'f')
-        return chr - 'a' + 10;
-    return 0;
-}
-
-
-static inline uint8_t glib_unescape(const uint8_t *string, uint8_t *const target) {
-    if (string[0] == '%' && ishex(string[1]) && ishex(string[2])) {
-        *target = hex2int(string[1]) * 0x10 + hex2int(string[2]);
-        return 0;
-    }
-
-    return 1;
-}
-
 // FONT related states
-
 static uint8_t line_count = 0;
 static struct font_info fnt_current;
 static struct char_info dotinfo;
@@ -411,15 +393,104 @@ void ICACHE_FLASH_ATTR glib_set_mode(const glib_draw_mode dm) {
     txt_drawmode = dm;
 }
 
-// draw string inside selected area with offsets
-uint8_t ICACHE_FLASH_ATTR glib_print(const uint8_t* string, const uint16_t x_l, const uint16_t y_asc,
+
+static inline uint8_t ishex(uint8_t chr) {
+    return (chr >= '0' && chr <= '9') ||
+            (chr >= 'A' && chr <= 'F') ||
+            (chr >= 'a' && chr <= 'f');
+}
+
+static inline uint8_t hex2int(uint8_t chr) {
+    if (chr >= '0' && chr <= '9')
+        return chr - '0';
+    if (chr >= 'A' && chr <= 'F')
+        return chr - 'A' + 10;
+    if (chr >= 'a' && chr <= 'f')
+        return chr - 'a' + 10;
+    return 0;
+}
+
+static void url_unescape(uint8_t *const string_destination, const uint8_t *const string_source, uint16_t dest_len) {
+    uint16_t chr_idx, tchr_idx;
+    for (chr_idx = 0, tchr_idx = 0; string_source[chr_idx] != '\0' && tchr_idx < dest_len - 1; ++chr_idx, ++tchr_idx) {
+        if (string_source[chr_idx] == '%' && ishex(string_source[chr_idx + 1]) && ishex(string_source[chr_idx + 2])) {
+            string_destination[tchr_idx] = hex2int(string_source[1]) * 0x10 + hex2int(string_source[2]);
+            chr_idx += 2;
+        } else {
+            string_destination[tchr_idx] = string_source[chr_idx];
+        }
+    }
+    string_destination[tchr_idx] = '\0';
+}
+
+static int8_t utf8_unescape(const uint8_t *string, uint32_t *const target) {
+    if ((string[0] == 'u' || string[1] == 'U') && string[1] == '+') {
+        int8_t utflen = 0, curr_utfpos;
+        uint32_t exp = 1;
+        for (; ishex(string[2 + utflen]) && utflen < 8; ++utflen);   // utf-8: 8 hex digits at most
+        if (string[0] == 'u' && utflen > 3)                          // u+ is 4 hex
+            utflen = 3;
+        *target = 0;
+        for (curr_utfpos = utflen; curr_utfpos >= 0; --curr_utfpos) {
+            *target += hex2int(string[2 + curr_utfpos]) * exp;
+            exp *= 0x10;
+        }
+        os_printf("unescaped utf8: U+%x\n", *target);
+        return 2 + utflen;
+    }
+
+    *target = (uint32_t)string[0];
+    return 0;
+}
+
+// string buffer for unescaping, preprocessing, ...
+static uint8_t strbuf[GLIB_MAX_CHARS * 2] = {0};
+static uint32_t strbuf32[GLIB_MAX_CHARS] = {0};
+
+uint8_t ICACHE_FLASH_ATTR glib_print(const uint8_t *string, const uint16_t x_l, const uint16_t y_asc,
                                      const glib_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re) {
+#if (VERBOSE > 1)
+    os_printf("print: '%s'\n", string);
+#endif
+
+    // 1st: check for URI escapes (%xx)
+    url_unescape(strbuf, string, GLIB_MAX_CHARS);
+
+#if (VERBOSE > 1)
+    os_printf("print after uri escape: '%s'\n", strbuf);
+#endif
+
+    // 2nd: check for UTF8 escapes (\Uxxxxxxxx or \uxxxx)
+    uint16_t chr_idx = 0;
+    uint16_t chr_fb_idx = 0;
+    for (chr_idx = 0; strbuf[chr_idx] != '\0'; ++chr_idx, ++chr_fb_idx)
+        chr_idx += utf8_unescape(&strbuf[chr_idx], &strbuf32[chr_fb_idx]);
+
+    glib_print_utf8(strbuf32, x_l, y_asc, args, x_l_re, y_asc_re);
+}
+
+/* TODO
+static void ICACHE_FLASH_ATTR string_preproc_utf8(const uint32_t *utf8string) {
+    uint16_t chr_idx;
+    uint32_t cchr;
+
+    for (chr_idx = 0; utf8string[chr_idx] != '\0'; ++chr_idx) {
+        cchr = utf8string[chr_idx];
+        if (cchr == 8) {    // backspace
+
+        }
+    }
+}
+*/
+
+uint8_t ICACHE_FLASH_ATTR glib_print_utf8(const uint32_t *utf8string, const uint16_t x_l, const uint16_t y_asc,
+                                          const glib_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re) {
     uint16_t chr_idx;
     uint16_t currx, curry;
     uint16_t x_l_tb = x_l + textbox.x_left;
     uint16_t y_asc_tb = y_asc + textbox.y_top;      // x, y corrected by textbox offsets
     struct char_info chi;
-    uint8_t override_last_char = (txt_drawmode != GLIB_DM_FREE) ? *chars_in_fb.last_char : 0;
+    uint32_t override_last_char = (txt_drawmode != GLIB_DM_FREE) ? *chars_in_fb.last_char : 0;
     uint8_t line_force_tag = 0;
     struct glib_window string_max_extent = {     // struct to get dimension of string (pix)
         .x_left = (int16_t)x_l_tb,                  // TODO: make global, so it works for multiple print(.)
@@ -437,18 +508,16 @@ uint8_t ICACHE_FLASH_ATTR glib_print(const uint8_t* string, const uint16_t x_l, 
     }
 
 #if (VERBOSE > 1)
-    os_printf("print: '%s' @ (%d,%d) & dm = %d\n", string, currx, curry, txt_drawmode);
+    os_printf("print_utf8: '");
+    dbg_print_utf8(utf8string);
+    os_printf("' @ (%d,%d) & dm = %d\n", currx, curry, txt_drawmode);
 #endif
 
-    for (chr_idx = 0; string[chr_idx] != '\0'; ++chr_idx) {
-        // check for HTML escape
-        uint8_t currchr;
-        if (!glib_unescape(&(string[chr_idx]), &currchr))
-            chr_idx += 2;
-        else
-            currchr = string[chr_idx];
+    for (chr_idx = 0; utf8string[chr_idx] != 0; ++chr_idx) {
+        uint32_t currchr = utf8string[chr_idx];   // current character: utf-8-char
+
 #if (VERBOSE > 1)
-        os_printf("print: currchr: '%c' (%d)\n", currchr, currchr);
+        os_printf("print: currchr: '%c' (%lu)\n", (currchr < 127) ? currchr : ' ', currchr);
 #endif
         uint8_t renderable = !get_char(&chi, currchr);
 
@@ -492,16 +561,16 @@ uint8_t ICACHE_FLASH_ATTR glib_print(const uint8_t* string, const uint16_t x_l, 
                         currx = x_l_tb;
                         curry = y_asc_tb;
 
-                        glib_print(&(chars_in_fb.chars[1]), x_l_tb, y_asc_tb, args, &currx, &curry);
+                        glib_print_utf8(&(chars_in_fb.chars[1]), x_l_tb, y_asc_tb, args, &currx, &curry);
                     } else {
                         override_last_char = 0;
                         curry += fnt_current.font_height;
                         currx = x_l_tb;
                         // skip next newline / space
-                        if (string[chr_idx + 1] == '\n' || string[chr_idx + 1] == ' ') {
-                            override_last_char = string[chr_idx + 1];
+                        if (utf8string[chr_idx + 1] == '\n' || utf8string[chr_idx + 1] == ' ') {
+                            override_last_char = utf8string[chr_idx + 1];
                             ++chars_in_fb.last_char;
-                            *chars_in_fb.last_char = string[chr_idx + 1];
+                            *chars_in_fb.last_char = utf8string[chr_idx + 1];
                             ++chr_idx;
                         }
                     }
@@ -513,18 +582,8 @@ uint8_t ICACHE_FLASH_ATTR glib_print(const uint8_t* string, const uint16_t x_l, 
 
             if (currchr == 8) {     // backspace -- well fuck.
                 uint8_t bsnum = 1;  // number of consecutive backspaces
-                uint8_t unesc;
-                for (; string[chr_idx + 1] != '\0'; ++chr_idx) {
-                    if (!glib_unescape(&(string[chr_idx + 1]), &unesc))
-                        chr_idx += 2;
-                    else
-                        unesc = string[chr_idx + 1];
+                for (; utf8string[chr_idx + 1] == 8; ++chr_idx, ++bsnum);
 
-                    if (unesc == 8)
-                        ++bsnum;
-                    else
-                        break;
-                }
                 // set end of new string -> zero at forward position
                 chars_in_fb.last_char -= (bsnum - 1);
                 if (chars_in_fb.last_char > chars_in_fb.chars) {
@@ -540,7 +599,7 @@ uint8_t ICACHE_FLASH_ATTR glib_print(const uint8_t* string, const uint16_t x_l, 
                 // print history without last char(s); return new positions
                 // NOTE: not really recursive, as it will probably only get called once...
                 //       exluding stuff like "a\bb\bc\bd" etc <- but who does that?!
-                glib_print(&(chars_in_fb.chars[1]), x_l_tb, y_asc_tb, args, &currx, &curry);
+                glib_print_utf8(&(chars_in_fb.chars[1]), x_l_tb, y_asc_tb, args, &currx, &curry);
 
                 if (line_force_tag && currx + 3 * dotinfo.advance <= textbox.x_right) {
                     // '...' fits
@@ -549,12 +608,14 @@ uint8_t ICACHE_FLASH_ATTR glib_print(const uint8_t* string, const uint16_t x_l, 
                     os_printf("print: skipping done!\n");
 #endif
                     // TODO: test multiline
-                    for (; string[chr_idx + 1] != '\0' && string[chr_idx + 1] != '\n'; ++chr_idx);
+                    for (; utf8string[chr_idx + 1] != '\0' && utf8string[chr_idx + 1] != '\n'; ++chr_idx);
                     line_force_tag = 0;
                     //return 1;
                 }
 #if (VERBOSE > 1)
-                os_printf("print: backspace; to go: '%s'\n", &string[chr_idx]);
+                os_printf("print: backspace; to go: '");
+                dbg_print_utf8(&utf8string[chr_idx]);
+                os_printf("'\n");
 #endif
                 continue;
             }
@@ -614,7 +675,7 @@ uint8_t ICACHE_FLASH_ATTR glib_print(const uint8_t* string, const uint16_t x_l, 
 
         if (glib_draw_char(&chi, &fnt_current, currx, curry, args)) {
 #if (VERBOSE > 1)
-            os_printf("glib_print: skipped '%c'\n", currchr);
+            os_printf("glib_print: skipped '%c' (%lu)\n", currchr < 128 ? currchr : ' ', currchr);
 #endif
             continue;
         }
@@ -661,9 +722,9 @@ uint8_t ICACHE_FLASH_ATTR glib_print(const uint8_t* string, const uint16_t x_l, 
 
 #if (VERBOSE > 1)
     os_printf("print: tracked chars in fb: ");
-    uint8_t *cchr = chars_in_fb.chars;
+    uint32_t *cchr = chars_in_fb.chars;
     for (; cchr <= chars_in_fb.last_char; ++cchr)
-        os_printf("%c", *cchr);
+        os_printf("%c", *cchr < 128 ? *cchr : 'X');
     os_printf("; len (%lu/%d) @ chars + %lu; %lu to go\n", (cchr - chars_in_fb.chars) / sizeof(uint8_t) + 1, SSD1322_MAX_CHARS,
                 (chars_in_fb.last_char - chars_in_fb.chars) / sizeof(uint8_t) + 1,
                 (&(chars_in_fb.chars[SSD1322_MAX_CHARS - 1]) - cchr) / sizeof(uint8_t));
