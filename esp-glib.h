@@ -40,9 +40,9 @@ typedef enum {
 } glib_draw_mode;
 
 struct glib_chars_in_fb {
-    uint8_t *last_char;
-    uint8_t *last_word;     // last 'space'
-    uint8_t chars[GLIB_MAX_CHARS];
+    uint32_t *last_char;
+    uint32_t *last_word;     // last 'space'
+    uint32_t chars[GLIB_MAX_CHARS];
 };
 
 /**
@@ -199,11 +199,19 @@ void glib_anim_toss_away(const glib_anim_direction dir, const struct glib_window
 uint8_t glib_translate(const struct glib_window *const region, const int16_t x, const int16_t y);
 
 /**
- * prints a zero-terminated string, latin1 encoding
+ * prints a zero-terminated string, ascii encoding
+ * UTF-8-escaping: u+xxxx or U+xxxxxxxx
  * relative to the origin set with ssd1322_set_textbox(.)
  */
 uint8_t glib_print(const uint8_t* string, const uint16_t x_l, const uint16_t y_asc,
                    const glib_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re);
+
+/**
+ * prints a zero-terminated string, utf8-encoding
+ * relative to the origin set with ssd1322_set_textbox(.)
+ */
+uint8_t glib_print_utf8(const uint32_t* utf8string, const uint16_t x_l, const uint16_t y_asc,
+                        const glib_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re);
 
 /**
  * select region to print text to
