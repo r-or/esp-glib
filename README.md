@@ -41,4 +41,4 @@ glib_fb2gram();                     // push framebuffer to display graphics RAM 
 
 Fonts and assets (bitmaps) can be created with a bitmap font converter such as [andryblack's](https://github.com/andryblack/fontbuilder) fontbuilder and converted to greyscale via my tool 'png2gs.py' in tools/.
 
-TODO: sample project using this library/driver
+[Sample project using this library/driver](https://github.com/r-or/esp-glib-example)
