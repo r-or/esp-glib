@@ -213,11 +213,6 @@ static void ICACHE_FLASH_ATTR ssd1322_set_area_phy(const struct glib_window_phy 
         };
         ssd1322_send_command_list(commands, sizeof(commands) / sizeof(uint8_t));
     }
-#if VERBOSE > 1
-    os_printf("ssd1322_set_area: col %d ... %d, row %d ... %d\n", SSD1322_COL_SEG_START + fb_upd_reg_old.seg_left * 2,
-              SSD1322_COL_SEG_START + fb_upd_reg_old.seg_right * 2 + 1, SSD1322_ROW_START + fb_upd_reg_old.row_bottom,
-              SSD1322_ROW_START + fb_upd_reg_old.row_top);
-#endif
 }
 
 
@@ -273,16 +268,17 @@ void ICACHE_FLASH_ATTR glib_update_gram(uint32_t *const framebuffer) {
     uint32_t bench_stime = system_get_time();
 #endif
 
-    // set window
-    ssd1322_set_area_phy((struct glib_window_phy *)&fb_upd_reg);
-
     // check how much stuff changed
     if ((fb_upd_reg.seg_right - fb_upd_reg.seg_left) * (fb_upd_reg.row_top - fb_upd_reg.row_bottom)
             > (SSD1322_SEGMENTS * SSD1322_ROWS) / 2) {
+        // set window
+        ssd1322_set_area_phy(&max_region_phy);
         // write whole framebuffer
         ssd1322_send_data(framebuffer, SSD1322_SEGMENTS * SSD1322_ROWS);
     }
     else { // write partial framebuffer
+        // set window
+        ssd1322_set_area_phy((struct glib_window_phy *)&fb_upd_reg);
         uint8_t row_idx;
         for (row_idx = fb_upd_reg.row_bottom; row_idx <= fb_upd_reg.row_top; ++row_idx) {
 #if (VERBOSE == 3)

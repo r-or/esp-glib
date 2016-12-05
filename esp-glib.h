@@ -30,7 +30,7 @@
 #endif
 
 // Animation
-#define GLIB_ANIM_DELAY_MS          33
+#define GLIB_ANIM_MIN_DELAY_MS          33
 
 typedef enum {
     GLIB_DM_TEXT,                // linebreak on words (delimiter: SPACE), no new page
@@ -132,26 +132,10 @@ void glib_reset_display(void);
 void glib_init_display(void);
 
 /*
+ *
  * API
+ *
  */
-
-/*
-#define ssd1322_print_default(string) \
-    ssd1322_clear_fb(GLIB_OS_ALL); \
-    ssd1322_set_textbox(NULL); \
-    ssd1322_clear_tb_txt_state(); \
-    ssd1322_set_mode(SSD1422_DM_TEXT); \
-    ssd1322_print((uint8_t *)string, 0, _FONT_MAX_CHAR_ASCENT_, \
-        GLIB_DA_SWENDIAN, NULL, NULL);
-
-#define ssd1322_print_center(string) \
-    ssd1322_clear_fb(GLIB_OS_ALL); \
-    ssd1322_set_textbox(NULL); \
-    ssd1322_clear_tb_txt_state(); \
-    ssd1322_set_mode(SSD1422_DM_FREE); \
-    ssd1322_print((uint8_t *)string, 0, _FONT_MAX_CHAR_ASCENT_, \
-        (glib_draw_args)(GLIB_DA_SWENDIAN | GLIB_DA_CENTER_Y | GLIB_DA_CENTER_X), NULL, NULL);
-*/
 
 /**
  * clear selected fb region only (specified by obj)
@@ -161,12 +145,14 @@ void glib_clear_fb(const glib_object_specifier obj);
 /**
  * clear selected fb region only (specified by obj)
  */
-void glib_clear_fb_toss_anim(const glib_anim_direction dir, void (*toss_cb)(void));
+void glib_clear_fb_toss_anim(const glib_anim_direction dir, const uint16_t hold_frames, const uint16_t acceleration,
+                             void (*toss_cb)(void));
 
 /**
  *
  */
-void glib_clear_disp_fadeout_anim(const uint8_t ftype, const uint32_t bg, void (*fadeout_cb)(void));
+void glib_clear_disp_fadeout_anim(const uint32_t bg_col, const uint16_t hold_frames, const uint16_t acceleration,
+                                  void (*fadeout_cb)(void));
 
 /**
  * draws rectangle
@@ -191,7 +177,7 @@ uint8_t glib_transform(uint32_t *const buf, const uint16_t height, const uint16_
  * throws object towards dir
  */
 void glib_anim_toss_away(const glib_anim_direction dir, const struct glib_window *const region,
-                         void (*toss_cb)(void));
+                         const uint16_t hold_frames, const uint16_t acceleration, void (*toss_cb)(void));
 
 /**
  * translation of region in framebuffer by (x, y)
@@ -237,6 +223,11 @@ void glib_set_mode(const glib_draw_mode dm);
  *
  */
 void glib_set_background(const uint32_t pattern);  // TODO: test
+
+/**
+ *
+ */
+void glib_set_anim_delay_ms(const uint16_t delay);
 
 /**
  * calls glib_update_gram(.)

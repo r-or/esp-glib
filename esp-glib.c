@@ -465,6 +465,7 @@ uint8_t ICACHE_FLASH_ATTR glib_print(const uint8_t *string, const uint16_t x_l, 
     uint16_t chr_fb_idx = 0;
     for (chr_idx = 0; strbuf[chr_idx] != '\0'; ++chr_idx, ++chr_fb_idx)
         chr_idx += utf8_unescape(&strbuf[chr_idx], &strbuf32[chr_fb_idx]);
+    strbuf32[chr_idx] = '\0';
 
     glib_print_utf8(strbuf32, x_l, y_asc, args, x_l_re, y_asc_re);
 }
@@ -742,10 +743,24 @@ uint8_t ICACHE_FLASH_ATTR glib_print_utf8(const uint32_t *utf8string, const uint
 }
 
 
+/*
+ *
+ * ANIMATIONS
+ *
+ */
+
+static uint16_t anim_delay;
+
+void ICACHE_FLASH_ATTR glib_set_anim_delay_ms(const uint16_t delay) {
+    anim_delay = (delay < GLIB_ANIM_MIN_DELAY_MS) ? GLIB_ANIM_MIN_DELAY_MS : delay;
+}
+
+
 static os_timer_t volatile toss_timer;
-static uint16_t anim_toss_time = 0;
+static uint16_t toss_anim_time = 0;
 static glib_anim_direction toss_dir;
-static struct glib_window toss_region, ctoss_region;
+static struct glib_window toss_region, toss_curr_region;
+static uint16_t toss_hold_frames, toss_acceleration;
 static int16_t toss_x = 0, toss_y = 0;
 static void (*toss_callback)(void);
 
@@ -757,14 +772,16 @@ inline uint8_t all_outside_boundaries(const struct glib_window *const region) {
 }
 
 static void ICACHE_FLASH_ATTR toss_func(void *arg) {
-    ctoss_region.x_left += toss_x;
-    ctoss_region.x_right += toss_x;
-    ctoss_region.y_top += toss_y;
-    ctoss_region.y_bottom += toss_y;
+    toss_curr_region.x_left += toss_x;
+    toss_curr_region.x_right += toss_x;
+    toss_curr_region.y_top += toss_y;
+    toss_curr_region.y_bottom += toss_y;
 
     int16_t move_by = 0;
-    if (anim_toss_time > 100)
-        move_by = (int16_t)(((int32_t)(anim_toss_time - 100) * (int32_t)(anim_toss_time - 100)) / (int32_t)1000);
+    if (toss_anim_time > toss_hold_frames)
+        move_by = (int16_t)(((int32_t)(toss_anim_time - toss_hold_frames)
+                             * (int32_t)(toss_anim_time - toss_hold_frames))
+                            / (int32_t)toss_acceleration);
 #if (VERBOSE > 1)
     os_printf("toss: move by %d towards %d\n", move_by, toss_dir);
 #endif
@@ -798,78 +815,92 @@ static void ICACHE_FLASH_ATTR toss_func(void *arg) {
               " .ytop: %d\n"
               " .ybottom: %d\n"
               "animtime: %d\n",
-              toss_region.x_left, toss_region.x_right, toss_region.y_top, toss_region.y_bottom, anim_toss_time);
+              toss_region.x_left, toss_region.x_right, toss_region.y_top, toss_region.y_bottom, toss_anim_time);
 #endif
     glib_translate(&toss_region, toss_x, toss_y);
-    if (all_outside_boundaries(&ctoss_region)) { // everything is outside
+    if (all_outside_boundaries(&toss_curr_region)) { // everything is outside
         os_timer_disarm(&toss_timer);
-        anim_toss_time = 0;
+        toss_anim_time = 0;
         struct glib_window tb_tmp = textbox;
         textbox = toss_region;
         glib_clear_fb(GLIB_OS_TEXTBOX);
         textbox = tb_tmp;
         toss_callback();
-    }
-    if (toss_x || toss_y)
+    } else if (toss_x || toss_y) {
         glib_update_gram((uint32_t *)framebuffer);
+    }
 
     system_soft_wdt_feed();
-    ++anim_toss_time;
+    ++toss_anim_time;
 }
 
 void ICACHE_FLASH_ATTR glib_anim_toss_away(const glib_anim_direction dir, const struct glib_window *const region,
-                                              void (*toss_cb)(void)) {
+                                           const uint16_t hold_frames, const uint16_t acceleration, void (*toss_cb)(void)) {
     os_timer_disarm(&toss_timer);
     os_timer_setfn(&toss_timer, (os_timer_func_t *)toss_func, NULL);
-    os_timer_arm(&toss_timer, GLIB_ANIM_DELAY_MS, 1);
+    os_timer_arm(&toss_timer, anim_delay, 1);
     toss_region = *region;
-    ctoss_region = *region;
+    toss_curr_region = *region;
     toss_callback = toss_cb;
     toss_dir = dir;
+    toss_hold_frames = hold_frames;
+    toss_acceleration = acceleration;
     toss_x = 0;
     toss_y = 0;
 }
 
-void ICACHE_FLASH_ATTR glib_clear_fb_toss_anim(const glib_anim_direction dir, void (*toss_cb)(void)) {
-    glib_anim_toss_away(dir, &region_full, toss_cb);
+void ICACHE_FLASH_ATTR glib_clear_fb_toss_anim(const glib_anim_direction dir, const uint16_t hold_frames, const uint16_t acceleration,
+                                               void (*toss_cb)(void)) {
+    glib_anim_toss_away(dir, &region_full, hold_frames, acceleration, toss_cb);
 }
 
 
 static os_timer_t volatile fadeout_timer;
-static uint8_t brightness = GLIB_MAX_BRIGHTNESS;
-static uint8_t fadeout_type;
+static uint8_t fadeout_curr_brightness = GLIB_MAX_BRIGHTNESS;
 static uint32_t fadeout_bg;
+static uint16_t fadeout_hold_frames, fadeout_acceleration;
 static void (*fadeout_callback)(void);
 
 static void ICACHE_FLASH_ATTR fadeout_func(void *arg) {
-    int16_t reduce_by = 1 + (GLIB_MAX_BRIGHTNESS - brightness) * (GLIB_MAX_BRIGHTNESS - brightness) / 5000;
-    if ((int16_t)brightness - reduce_by < 0)
-        brightness = 0;
+    int16_t reduce_by = 0;
+    if (!fadeout_hold_frames) {
+        reduce_by = 1 + (
+                    (GLIB_MAX_BRIGHTNESS - fadeout_curr_brightness)
+                    * (GLIB_MAX_BRIGHTNESS - fadeout_curr_brightness)
+                    / (fadeout_acceleration * 5));
+    } else {
+        fadeout_hold_frames--;
+        return;
+    }
+#if (VERBOSE > 1)
+    os_printf("fadeout_anim: brightness: %d, reduce by: %d\n", fadeout_curr_brightness, reduce_by);
+#endif
+    if ((int16_t)fadeout_curr_brightness - reduce_by < 0)
+        fadeout_curr_brightness = 0;
     else
-        brightness -= (uint8_t)reduce_by;
+        fadeout_curr_brightness -= (uint8_t)reduce_by;
 
-    if (brightness == 0) {
+    if (fadeout_curr_brightness == 0) {
         os_timer_disarm(&fadeout_timer);
         glib_clear_disp(fadeout_bg);
-        brightness = GLIB_MAX_BRIGHTNESS;
-        if (fadeout_type == 2)
-            glib_update_gram((uint32_t *)framebuffer);
+        fadeout_curr_brightness = GLIB_MAX_BRIGHTNESS;
         fadeout_callback();
     }
-    glib_set_brightness(brightness);
+    glib_set_brightness(fadeout_curr_brightness);
 }
 
-void ICACHE_FLASH_ATTR glib_clear_disp_fadeout_anim(const uint8_t ftype, const uint32_t bg, void (*fadeout_cb)(void)) {
+void ICACHE_FLASH_ATTR glib_clear_disp_fadeout_anim(const uint32_t bg_col, const uint16_t hold_frames, const uint16_t acceleration,
+                                                    void (*fadeout_cb)(void)) {
+    os_printf("inside fadeout\n");
     os_timer_disarm(&fadeout_timer);
     os_timer_setfn(&fadeout_timer, (os_timer_func_t *)fadeout_func, NULL);
-    os_timer_arm(&fadeout_timer, GLIB_ANIM_DELAY_MS, 1);
+    os_timer_arm(&fadeout_timer, anim_delay, 1);
 
-    fadeout_bg = bg;
-    fadeout_type = ftype;
+    fadeout_bg = bg_col;
+    fadeout_hold_frames = hold_frames;
+    fadeout_acceleration = acceleration;
     fadeout_callback = fadeout_cb;
-    return;
 }
-
 
 
 void ICACHE_FLASH_ATTR glib_clear_fb(const glib_object_specifier obj) {
@@ -939,6 +970,7 @@ void ICACHE_FLASH_ATTR glib_reset(void) {
 
 void ICACHE_FLASH_ATTR glib_init(void) {
     glib_reset();
+    glib_set_anim_delay_ms(GLIB_ANIM_MIN_DELAY_MS);
     glib_set_textbox(NULL);
     glib_clear_tb_txt_state();
     glib_set_mode(GLIB_DM_TEXT);
