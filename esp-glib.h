@@ -1,3 +1,7 @@
+/*
+ * esp-glib.h
+ */
+
 #ifndef __ESP_GLIB_H__
 #define __ESP_GLIB_H__
 
@@ -8,9 +12,18 @@
     #define VERBOSE 0
 #endif
 
-/*
+/***********************************************
+ * CONFIG
+ ***********************************************/
+
+// Animation
+#define GLIB_ANIM_MIN_DELAY_MS          33
+
+
+/***********************************************
  * DRIVER SELECTION
- */
+ ***********************************************/
+
 #ifdef DISP_SSD1322
     #include "ssd1322.h"
 
@@ -21,32 +34,27 @@
     #define GLIB_FBSIZE_INT32           (SSD1322_SEGMENTS * SSD1322_ROWS)
     #define GLIB_PIX_INT32              (32 / SSD1322_PIXDEPTH)
     #define GLIB_PIX_INT8               (8 / SSD1322_PIXDEPTH)
-    #define GLIB_MAX_BRIGHTNESS         SSD1322_MAX_BRIGHTNESS
-    #define GLIB_MAX_CHARS              SSD1322_MAX_CHARS
+    #define GLIB_MAX_BRIGHTNESS         (SSD1322_MAX_BRIGHTNESS)
+    #define GLIB_MAX_CHARS              (SSD1322_MAX_CHARS)
 
     #define GLIB_DISP_COLS              ((GLIB_DISP_COL_UPPER - GLIB_DISP_COL_LOWER) + 1)
     #define GLIB_DISP_ROWS              ((GLIB_DISP_ROW_UPPER - GLIB_DISP_ROW_LOWER) + 1)
     #define GLIB_DISP_COLS_INT32        (GLIB_DISP_COLS / GLIB_PIX_INT32)
 #endif
 
-// Animation
-#define GLIB_ANIM_MIN_DELAY_MS          33
 
-typedef enum {
-    GLIB_DM_TEXT,                // linebreak on words (delimiter: SPACE), no new page
-    GLIB_DM_TEXT_CLR,            //                                      , clear on new page
-    GLIB_DM_TEXT_LINE_FORCE,     // instead of linebreak, cut remainder & display '...'
-    GLIB_DM_FREE                 // no auto linebreak at all
-} glib_draw_mode;
-
+/**
+ * @brief The glib_chars_in_fb struct
+ */
 struct glib_chars_in_fb {
     uint32_t *last_char;
-    uint32_t *last_word;     // last 'space'
+    uint32_t *last_word;            /// last 'space' character
     uint32_t chars[GLIB_MAX_CHARS];
 };
 
 /**
- * logical layout (unit: pixels)
+ * @brief The glib_window struct
+ * LOGICAL layout (unit: pixels)
  * COL_UPPER >= x_right  > x_left >= COL_LOWER
  * ROW_UPPER >= y_bottom > y_top  >= ROW_LOWER
  *
@@ -66,7 +74,8 @@ struct glib_window {
 };
 
 /**
- * physical layout (unit: segments, or 32 bit wide 'pixel words')
+ * @brief The glib_window_phy struct
+ * PHYSICAL layout (unit: segments, or 32 bit wide 'pixel words')
  * SEGS - 1 >= seg_right > seg_left   >= 0
  * ROWS - 1 >= row_top   > row_bottom >= 0
  */
@@ -77,9 +86,22 @@ struct glib_window_phy {
     uint8_t row_top;
 };
 
+/**
+ * text draw mode
+ */
+typedef enum {
+    GLIB_DM_TEXT,                   /// linebreak on words (delimiter: SPACE), no new page
+    GLIB_DM_TEXT_CLR,               ///                                      , clear on new page
+    GLIB_DM_TEXT_LINE_FORCE,        /// instead of linebreak, cut remainder & display '...'
+    GLIB_DM_FREE                    /// no auto linebreak at all
+} glib_draw_mode;
+
+/**
+ * specifies objects used in glib
+ */
 typedef enum {
     GLIB_OS_ALL,                 // tag/clear whole framebuffer
-    GLIB_OS_STAGED,              // clear whole fb, only tag part last updated
+    GLIB_OS_STAGED,              // clear whole fb, only tag part last updated | TODO!
     GLIB_OS_TEXTBOX              // only clear current textbox region
 } glib_object_specifier;
 
@@ -93,7 +115,6 @@ typedef enum {
     GLIB_AD_E,
     GLIB_AD_NE
 } glib_anim_direction;
-
 
 typedef enum {
     GLIB_DA_NONE     = 0x00,
@@ -109,139 +130,241 @@ typedef enum {
 } glib_draw_args;
 
 
-/*
- * INTERFACE: Implementation in display driver
- */
+/***********************************************
+ * DRIVER IF: Implementation in display driver
+ ***********************************************/
 
 /**
- * read-only transformations + draws on FB
+ * @brief glib_draw read-only transformations + draws to a buffer
+ * @param to_buf buffer to draw to, i.e. framebuffer
+ * @param x_ul origin: left
+ * @param y_ul origin: top
+ * @param bitmap the bitmap to draw
+ * @param height height of bitmap
+ * @param width width of bitmap
+ * @param args draw args; only read-only ones are being considered
+ * @return zero if success
  */
-uint8_t glib_draw(uint32_t *const to_buf, const uint16_t x_ul, const uint16_t y_ul, uint32_t *const bitmap,
-                  const uint16_t height, const uint16_t width, const glib_draw_args args);
-void glib_setpix(uint32_t *const seg, uint8_t id, const uint8_t value);
-uint8_t glib_getpix(const uint32_t *const seg, const uint8_t id);
-int16_t glib_row_log2phys(const int16_t log_row);
-int16_t glib_col_log2phys(const int16_t log_col);
-struct glib_window_phy glib_region_log2phys(const struct glib_window *const log_region);
-void glib_tag_upd_reg_log(const struct glib_window *const region);
-void glib_update_gram(uint32_t *const framebuffer);
-void glib_set_brightness(const uint8_t value);
-void glib_set_enable(const uint8_t enable);
-void glib_clear_disp(const uint32_t pattern);
-void glib_reset_display(void);
-void glib_init_display(void);
+uint8_t
+glib_draw(uint32_t *const to_buf, const uint16_t x_ul, const uint16_t y_ul, uint32_t *const bitmap,
+          const uint16_t height, const uint16_t width, const glib_draw_args args);
 
-/*
- *
- * API
- *
- */
+void
+glib_setpix(uint32_t *const seg, uint8_t id, const uint8_t value);
 
-/**
- * clear selected fb region only (specified by obj)
- */
-void glib_clear_fb(const glib_object_specifier obj);
+uint8_t
+glib_getpix(const uint32_t *const seg, const uint8_t id);
 
-/**
- * clear selected fb region only (specified by obj)
- */
-void glib_clear_fb_toss_anim(const glib_anim_direction dir, const uint16_t hold_frames, const uint16_t acceleration,
-                             void (*toss_cb)(void));
+int16_t
+glib_row_log2phys(const int16_t log_row);
 
-/**
- *
- */
-void glib_clear_disp_fadeout_anim(const uint32_t bg_col, const uint16_t hold_frames, const uint16_t acceleration,
-                                  void (*fadeout_cb)(void));
+int16_t
+glib_col_log2phys(const int16_t log_col);
 
-/**
- * draws rectangle
- */
-void glib_draw_rect(const struct glib_window *const border, const uint32_t pattern);
+struct glib_window_phy
+glib_region_log2phys(const struct glib_window *const log_region);
 
-/**
- * fetches bmp from flash + prepares for drawing
- */
-uint8_t glib_draw_bitmap(const uint16_t x_ul, const uint16_t y_ul, uint32_t address,
-                         const uint16_t height, const uint16_t width, const glib_draw_args args);
+void
+glib_tag_upd_reg_log(const struct glib_window *const region);
 
-/**
- * performs transformation ON buf
- * (only uses glib_draw_args which are not read-only)
- * dim: dim pixel by this (4bit) value
- */
-uint8_t glib_transform(uint32_t *const buf, const uint16_t height, const uint16_t width, const uint8_t dim,
-                       const glib_draw_args args);
+void
+glib_update_gram(uint32_t *const framebuffer);
+
+void
+glib_set_brightness(const uint8_t value);
+
+void
+glib_set_enable(const uint8_t enable);
+
+void
+glib_clear_disp(const uint32_t pattern);
+
+void
+glib_reset_display(void);
+
+void
+glib_init_display(void);
+
+
+/***********************************************
+ * Implementation in esp-glib
+ ***********************************************/
 
 /**
- * throws object towards dir
+ * @brief glib_clear_fb clear selected fb region only (specified by obj)
+ * @param obj specify object to clear
  */
-void glib_anim_toss_away(const glib_anim_direction dir, const struct glib_window *const region,
-                         const uint16_t hold_frames, const uint16_t acceleration, void (*toss_cb)(void));
+void
+glib_clear_fb(const glib_object_specifier obj);
 
 /**
- * translation of region in framebuffer by (x, y)
+ * @brief glib_clear_fb_toss_anim clear selected fb region only (specified by obj)
+ * @param dir direction
+ * @param hold_frames # of frames to wait until actual anim starts
+ * @param acceleration how fast animation speed will pick up
  */
-uint8_t glib_translate(const struct glib_window *const region, const int16_t x, const int16_t y);
+void
+glib_clear_fb_toss_anim(const glib_anim_direction dir, const uint16_t hold_frames, const uint16_t acceleration,
+                        void (*toss_cb)(void));
 
 /**
- * prints a zero-terminated string, ascii encoding
- * UTF-8-escaping: u+xxxx or U+xxxxxxxx
+ * @brief glib_clear_disp_fadeout_anim clear display (NOT framebuffer)
+ * @param bg_col color to fade to (wip)
+ * @param hold_frames
+ * @param acceleration
+ */
+void
+glib_clear_disp_fadeout_anim(const uint32_t bg_col, const uint16_t hold_frames, const uint16_t acceleration,
+                             void (*fadeout_cb)(void));
+
+/**
+ * @brief glib_draw_rect draw rectangle to framebuffer
+ * @param border
+ * @param pattern color/pattern of frame
+ */
+void
+glib_draw_rect(const struct glib_window *const border, const uint32_t pattern);
+
+/**
+ * @brief glib_draw_bitmap see glib_draw(.)
+ * @param x_ul
+ * @param y_ul
+ * @param address address in flash relative to assets address
+ * @param height
+ * @param width
+ * @param args
+ * @return zero if success
+ */
+uint8_t
+glib_draw_bitmap(const uint16_t x_ul, const uint16_t y_ul, uint32_t address,
+                 const uint16_t height, const uint16_t width, const glib_draw_args args);
+
+/**
+ * @brief glib_transform performs transformation ON buf (only uses glib_draw_args which are not read-only)
+ * @param buf
+ * @param height
+ * @param width
+ * @param dim dim pixel by this (4bit) value
+ * @param args
+ * @return zero if success
+ */
+uint8_t
+glib_transform(uint32_t *const buf, const uint16_t height, const uint16_t width, const uint8_t dim,
+               const glib_draw_args args);
+
+/**
+ * @brief glib_anim_toss_away
+ * @param dir
+ * @param region
+ * @param hold_frames
+ * @param acceleration
+ */
+void
+glib_anim_toss_away(const glib_anim_direction dir, const struct glib_window *const region,
+                    const uint16_t hold_frames, const uint16_t acceleration, void (*toss_cb)(void));
+
+/**
+ * @brief glib_translate translation of region in framebuffer by (x, y)
+ * @param region
+ * @param x
+ * @param y
+ * @return zero if success
+ */
+uint8_t
+glib_translate(const struct glib_window *const region, const int16_t x, const int16_t y);
+
+/**
+ * @brief glib_print prints a zero-terminated string relative to the origin set with glib_set_textbox(.)
+ * Encoding: ASCII; UTF-8-escaping: u+xxxx or U+xxxxxxxx
+ * @param string zero-terminated
+ * @param x_l origin: top left, x-value
+ * @param y_asc char baseline (see https://en.wikipedia.org/wiki/Typeface#Font_metrics)
+ * @param args draw-args which can apply to fonts
+ * @param x_l_re after rendering, return position of right-most coordinate of last char; x-value
+ * @param y_asc_re
+ * @return zero if nothing had to be skipped
+ */
+uint8_t
+glib_print(const uint8_t* string, const uint16_t x_l, const uint16_t y_asc,
+           const glib_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re);
+
+/**
+ * , utf8-encoding
  * relative to the origin set with ssd1322_set_textbox(.)
  */
-uint8_t glib_print(const uint8_t* string, const uint16_t x_l, const uint16_t y_asc,
-                   const glib_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re);
+/**
+ * @brief glib_print_utf8 prints a zero-terminated string
+ * Encoding: UTF-8. See glib_print(.)
+ * @param utf8string
+ * @param x_l
+ * @param y_asc
+ * @param args
+ * @param x_l_re
+ * @param y_asc_re
+ * @return
+ */
+uint8_t
+glib_print_utf8(const uint32_t* utf8string, const uint16_t x_l, const uint16_t y_asc,
+                const glib_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re);
 
 /**
- * prints a zero-terminated string, utf8-encoding
- * relative to the origin set with ssd1322_set_textbox(.)
+ * @brief glib_set_textbox select region to print text to
+ * @param region
  */
-uint8_t glib_print_utf8(const uint32_t* utf8string, const uint16_t x_l, const uint16_t y_asc,
-                        const glib_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re);
+void
+glib_set_textbox(const struct glib_window *const region);
 
 /**
- * select region to print text to
+ * @brief glib_clear_tb_txt_state reset txt positioning to the ALREADY SELECTED (!) textbox
  */
-void glib_set_textbox(const struct glib_window *const region);
+void
+glib_clear_tb_txt_state(void);
 
 /**
- * reset txt positioning to the ALREADY SELECTED (!) textbox
+ * @brief glib_set_cursor positioning relative to textbox
+ * @param x_l
+ * @param y_asc
  */
-void glib_clear_tb_txt_state(void);
+void
+glib_set_cursor(const uint16_t x_l, const uint16_t y_asc);
 
 /**
- * positioning relative to textbox
+ * @brief glib_set_mode
+ * @param dm
  */
-void glib_set_cursor(const uint16_t x_l, const uint16_t y_asc);
+void
+glib_set_mode(const glib_draw_mode dm);
 
 /**
- * select draw mode
+ * @brief glib_set_background
+ * @param pattern
  */
-void glib_set_mode(const glib_draw_mode dm);
+void
+glib_set_background(const uint32_t pattern);  // TODO: test
 
 /**
- *
+ * @brief glib_set_anim_delay_ms
+ * @param delay
  */
-void glib_set_background(const uint32_t pattern);  // TODO: test
+void
+glib_set_anim_delay_ms(const uint16_t delay);
 
 /**
- *
+ * @brief glib_fb2gram glib_update_gram(.)
  */
-void glib_set_anim_delay_ms(const uint16_t delay);
+void
+glib_fb2gram(void);
 
 /**
- * calls glib_update_gram(.)
+ * @brief glib_reset calls glib_reset_display()
  */
-void glib_fb2gram(void);
+void
+glib_reset(void);
 
 /**
- * calls glib_reset_display()
+ * @brief glib_init calls glib_init_display()
  */
-void glib_reset(void);
-
-/**
- * calls glib_init_display()
- */
-void glib_init(void);
+void
+glib_init(void);
 
 #endif

@@ -1,5 +1,5 @@
 /*
- *
+ * esp-glib.c
  * License: MIT / x11
  * Copyright 2016 Tobias Däullary
  *
@@ -32,7 +32,8 @@ static const struct glib_window region_full = {
     .y_top = GLIB_DISP_ROW_LOWER,
 };
 
-static void ICACHE_FLASH_ATTR dbg_dump_fb(const struct glib_window *region) {
+static void ICACHE_FLASH_ATTR
+dbg_dump_fb(const struct glib_window *region) {
     int16_t row = 0, pix = 0;
     uint8_t pix_id;
     uint32_t *cbuf;
@@ -41,7 +42,8 @@ static void ICACHE_FLASH_ATTR dbg_dump_fb(const struct glib_window *region) {
         os_printf("%03d\t", row);
         for (pix = region->x_left; pix <= region->x_right; ++pix) {
             pix_id = pix % GLIB_PIX_INT32;
-            cbuf = (uint32_t *)framebuffer + GLIB_DISP_COLS_INT32 * glib_row_log2phys(row) + glib_col_log2phys(pix) / GLIB_PIX_INT32;
+            cbuf = (uint32_t *)framebuffer
+                    + GLIB_DISP_COLS_INT32 * glib_row_log2phys(row) + glib_col_log2phys(pix) / GLIB_PIX_INT32;
             os_printf("%x", glib_getpix(cbuf, pix_id));
         }
         os_printf("\n");
@@ -49,7 +51,8 @@ static void ICACHE_FLASH_ATTR dbg_dump_fb(const struct glib_window *region) {
     system_soft_wdt_feed();
 }
 
-static void ICACHE_FLASH_ATTR dbg_print_utf8(const uint32_t *const string) {
+static void ICACHE_FLASH_ATTR
+dbg_print_utf8(const uint32_t *const string) {
     uint8_t idx = 0;
     for (idx = 0; string[idx] != '\0'; ++idx) {
         if (string[idx] < 128)
@@ -59,8 +62,9 @@ static void ICACHE_FLASH_ATTR dbg_print_utf8(const uint32_t *const string) {
     }
 }
 
-uint8_t ICACHE_FLASH_ATTR glib_transform(uint32_t *const buf, const uint16_t height, const uint16_t width, const uint8_t dim,
-                                                const glib_draw_args args) {
+uint8_t ICACHE_FLASH_ATTR
+glib_transform(uint32_t *const buf, const uint16_t height, const uint16_t width, const uint8_t dim,
+               const glib_draw_args args) {
     uint16_t rowcnt, bufidx;
     uint16_t buflen = (height * width + GLIB_PIX_INT32 - 1) / GLIB_PIX_INT32;
     uint8_t segs = (uint8_t)((width + GLIB_PIX_INT32 - 1) / GLIB_PIX_INT32);
@@ -112,14 +116,16 @@ uint8_t ICACHE_FLASH_ATTR glib_transform(uint32_t *const buf, const uint16_t hei
     return 0;
 }
 
-inline void ICACHE_FLASH_ATTR region_prune(struct glib_window *const region) {
+inline void ICACHE_FLASH_ATTR
+region_prune(struct glib_window *const region) {
     region->x_left = (region->x_left < 0) ? 0 : region->x_left;
     region->x_right = (region->x_right > GLIB_DISP_COL_UPPER) ? GLIB_DISP_COL_UPPER : region->x_right;
     region->y_top = (region->y_top < 0) ? 0 : region->y_top;
     region->y_bottom = (region->y_bottom > GLIB_DISP_ROW_UPPER) ? GLIB_DISP_ROW_UPPER : region->y_bottom;
 }
 
-uint8_t ICACHE_FLASH_ATTR glib_translate(const struct glib_window *const region, const int16_t x, const int16_t y) {
+uint8_t ICACHE_FLASH_ATTR
+glib_translate(const struct glib_window *const region, const int16_t x, const int16_t y) {
 #if (VERBOSE > 1)
     os_printf("translate: region\n"
               " .xleft: %d\n"
@@ -215,8 +221,10 @@ uint8_t ICACHE_FLASH_ATTR glib_translate(const struct glib_window *const region,
 #endif
                 continue;
             }
-            cbufr = (uint32_t *)framebuffer + GLIB_DISP_COLS_INT32 * glib_row_log2phys(crow) + glib_col_log2phys(ccol) / GLIB_PIX_INT32;
-            cbufw = (uint32_t *)framebuffer + GLIB_DISP_COLS_INT32 * glib_row_log2phys(crow + y) + glib_col_log2phys(ccol + x) / GLIB_PIX_INT32;
+            cbufr = (uint32_t *)framebuffer
+                    + GLIB_DISP_COLS_INT32 * glib_row_log2phys(crow) + glib_col_log2phys(ccol) / GLIB_PIX_INT32;
+            cbufw = (uint32_t *)framebuffer
+                    + GLIB_DISP_COLS_INT32 * glib_row_log2phys(crow + y) + glib_col_log2phys(ccol + x) / GLIB_PIX_INT32;
             glib_setpix(cbufw, segw_pixid, glib_getpix(cbufr, segr_pixid));   // copy to target
             glib_setpix(cbufr, segr_pixid, 0);                           // clear source
         }
@@ -229,7 +237,8 @@ uint8_t ICACHE_FLASH_ATTR glib_translate(const struct glib_window *const region,
 }
 
 
-void ICACHE_FLASH_ATTR glib_draw_rect(const struct glib_window *const border, const uint32_t pattern) {
+void ICACHE_FLASH_ATTR
+glib_draw_rect(const struct glib_window *const border, const uint32_t pattern) {
     uint16_t height = border->y_bottom - border->y_top;
     uint16_t width = border->x_right - border->x_left;
     uint16_t size = (width > height) ?
@@ -265,8 +274,9 @@ void ICACHE_FLASH_ATTR glib_draw_rect(const struct glib_window *const border, co
 // TODO: maybe read line-wise to safe RAM -> TODO^2: 4byte align bmp by width
 // FIX#1: dynamic allocation for now
 
-uint8_t ICACHE_FLASH_ATTR glib_draw_bitmap(const uint16_t x_ul, const uint16_t y_ul, uint32_t address,
-                            const uint16_t height, const uint16_t width, const glib_draw_args args) {
+uint8_t ICACHE_FLASH_ATTR
+glib_draw_bitmap(const uint16_t x_ul, const uint16_t y_ul, uint32_t address,
+                 const uint16_t height, const uint16_t width, const glib_draw_args args) {
     if (width > GLIB_DISP_COLS || height > GLIB_DISP_ROWS) {
 #if (VERBOSE > 0)
         os_printf("glib_draw_bitmap: bitmap doesn't fit!\n");
@@ -281,7 +291,8 @@ uint8_t ICACHE_FLASH_ATTR glib_draw_bitmap(const uint16_t x_ul, const uint16_t y
     glib_draw((uint32_t *)framebuffer, x_ul, y_ul, bmtempbuf, height, width, args);
 
 #if (VERBOSE > 1)
-        os_printf("glib_draw_bitmap: drawn @ %d, %d, len: %d\n", glib_col_log2phys(x_ul), glib_row_log2phys(y_ul), height * width);
+        os_printf("glib_draw_bitmap: drawn @ %d, %d, len: %d\n",
+                  glib_col_log2phys(x_ul), glib_row_log2phys(y_ul), height * width);
 #endif
 #if (VERBOSE > 2)
     dbg_dump_fb(&region_full);
@@ -293,8 +304,9 @@ uint8_t ICACHE_FLASH_ATTR glib_draw_bitmap(const uint16_t x_ul, const uint16_t y
 
 static uint32_t chbuf[_FONT_MAX_CHAR_SIZE_INT32_];
 
-static uint8_t ICACHE_FLASH_ATTR glib_draw_char(const struct char_info *const chi, const struct font_info *const fnt,
-                          const uint16_t x_origin, const uint16_t y_ascend, const glib_draw_args args) {
+static uint8_t ICACHE_FLASH_ATTR
+glib_draw_char(const struct char_info *const chi, const struct font_info *const fnt,
+               const uint16_t x_origin, const uint16_t y_ascend, const glib_draw_args args) {
     if (y_ascend - fnt->font_ascend < 0) { // TODO: more security checks
 
 #if (VERBOSE > 1)
@@ -356,14 +368,16 @@ static glib_draw_mode txt_drawmode = GLIB_DM_TEXT;
 static uint16_t txt_xpos = 0, txt_ypos = 0;
 static struct glib_chars_in_fb chars_in_fb;
 
-void ICACHE_FLASH_ATTR glib_clear_tb_txt_state(void) {
+void ICACHE_FLASH_ATTR
+glib_clear_tb_txt_state(void) {
     txt_xpos = textbox.x_left;
     txt_ypos = textbox.y_top;
     chars_in_fb.chars[0] = 0;
     chars_in_fb.last_char = chars_in_fb.chars;
 }
 
-void ICACHE_FLASH_ATTR glib_set_textbox(const struct glib_window *const region) {
+void ICACHE_FLASH_ATTR
+glib_set_textbox(const struct glib_window *const region) {
     if (region)
         textbox = *region;
     else
@@ -383,24 +397,28 @@ void ICACHE_FLASH_ATTR glib_set_textbox(const struct glib_window *const region) 
     line_count = (textbox.y_bottom - textbox.y_top) / fnt_current.font_height;
 }
 
-void ICACHE_FLASH_ATTR glib_set_cursor(const uint16_t x_l, const uint16_t y_asc) {
+void ICACHE_FLASH_ATTR
+glib_set_cursor(const uint16_t x_l, const uint16_t y_asc) {
     txt_drawmode = GLIB_DM_TEXT;
     txt_xpos = x_l;
     txt_ypos = y_asc;
 }
 
-void ICACHE_FLASH_ATTR glib_set_mode(const glib_draw_mode dm) {
+void ICACHE_FLASH_ATTR
+glib_set_mode(const glib_draw_mode dm) {
     txt_drawmode = dm;
 }
 
 
-static inline uint8_t ishex(uint8_t chr) {
+static inline uint8_t
+ishex(uint8_t chr) {
     return (chr >= '0' && chr <= '9') ||
             (chr >= 'A' && chr <= 'F') ||
             (chr >= 'a' && chr <= 'f');
 }
 
-static inline uint8_t hex2int(uint8_t chr) {
+static inline uint8_t
+hex2int(uint8_t chr) {
     if (chr >= '0' && chr <= '9')
         return chr - '0';
     if (chr >= 'A' && chr <= 'F')
@@ -410,7 +428,8 @@ static inline uint8_t hex2int(uint8_t chr) {
     return 0;
 }
 
-static void url_unescape(uint8_t *const string_destination, const uint8_t *const string_source, uint16_t dest_len) {
+static void
+url_unescape(uint8_t *const string_destination, const uint8_t *const string_source, uint16_t dest_len) {
     uint16_t chr_idx, tchr_idx;
     for (chr_idx = 0, tchr_idx = 0; string_source[chr_idx] != '\0' && tchr_idx < dest_len - 1; ++chr_idx, ++tchr_idx) {
         if (string_source[chr_idx] == '%' && ishex(string_source[chr_idx + 1]) && ishex(string_source[chr_idx + 2])) {
@@ -423,7 +442,8 @@ static void url_unescape(uint8_t *const string_destination, const uint8_t *const
     string_destination[tchr_idx] = '\0';
 }
 
-static int8_t utf8_unescape(const uint8_t *string, uint32_t *const target) {
+static int8_t
+utf8_unescape(const uint8_t *string, uint32_t *const target) {
     if ((string[0] == 'u' || string[1] == 'U') && string[1] == '+') {
         int8_t utflen = 0, curr_utfpos;
         uint32_t exp = 1;
@@ -447,7 +467,8 @@ static int8_t utf8_unescape(const uint8_t *string, uint32_t *const target) {
 static uint8_t strbuf[GLIB_MAX_CHARS * 2] = {0};
 static uint32_t strbuf32[GLIB_MAX_CHARS] = {0};
 
-uint8_t ICACHE_FLASH_ATTR glib_print(const uint8_t *string, const uint16_t x_l, const uint16_t y_asc,
+uint8_t ICACHE_FLASH_ATTR
+glib_print(const uint8_t *string, const uint16_t x_l, const uint16_t y_asc,
                                      const glib_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re) {
 #if (VERBOSE > 1)
     os_printf("print: '%s'\n", string);
@@ -467,11 +488,12 @@ uint8_t ICACHE_FLASH_ATTR glib_print(const uint8_t *string, const uint16_t x_l, 
         chr_idx += utf8_unescape(&strbuf[chr_idx], &strbuf32[chr_fb_idx]);
     strbuf32[chr_idx] = '\0';
 
-    glib_print_utf8(strbuf32, x_l, y_asc, args, x_l_re, y_asc_re);
+    return glib_print_utf8(strbuf32, x_l, y_asc, args, x_l_re, y_asc_re);
 }
 
 /* TODO
-static void ICACHE_FLASH_ATTR string_preproc_utf8(const uint32_t *utf8string) {
+static void ICACHE_FLASH_ATTR
+string_preproc_utf8(const uint32_t *utf8string) {
     uint16_t chr_idx;
     uint32_t cchr;
 
@@ -484,7 +506,8 @@ static void ICACHE_FLASH_ATTR string_preproc_utf8(const uint32_t *utf8string) {
 }
 */
 
-uint8_t ICACHE_FLASH_ATTR glib_print_utf8(const uint32_t *utf8string, const uint16_t x_l, const uint16_t y_asc,
+uint8_t ICACHE_FLASH_ATTR
+glib_print_utf8(const uint32_t *utf8string, const uint16_t x_l, const uint16_t y_asc,
                                           const glib_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re) {
     uint16_t chr_idx;
     uint16_t currx, curry;
@@ -738,24 +761,24 @@ uint8_t ICACHE_FLASH_ATTR glib_print_utf8(const uint32_t *utf8string, const uint
 #if (VERBOSE > 2)
     dbg_dump_fb(&region_full);
 #endif
-
     return 0;
 }
 
 
-/*
- *
+/***********************************************
  * ANIMATIONS
- *
- */
+ ***********************************************/
 
 static uint16_t anim_delay;
 
-void ICACHE_FLASH_ATTR glib_set_anim_delay_ms(const uint16_t delay) {
+void ICACHE_FLASH_ATTR
+glib_set_anim_delay_ms(const uint16_t delay) {
     anim_delay = (delay < GLIB_ANIM_MIN_DELAY_MS) ? GLIB_ANIM_MIN_DELAY_MS : delay;
 }
 
-
+/*
+ * TOSS
+ */
 static os_timer_t volatile toss_timer;
 static uint16_t toss_anim_time = 0;
 static glib_anim_direction toss_dir;
@@ -764,14 +787,16 @@ static uint16_t toss_hold_frames, toss_acceleration;
 static int16_t toss_x = 0, toss_y = 0;
 static void (*toss_callback)(void);
 
-inline uint8_t all_outside_boundaries(const struct glib_window *const region) {
+inline uint8_t
+all_outside_boundaries(const struct glib_window *const region) {
     return ((region->x_left < 0 || region->x_left > GLIB_DISP_COL_UPPER)
             && (region->x_right < 0 || region->x_right > GLIB_DISP_COL_UPPER))
         || ((region->y_bottom < 0 || region->y_bottom > GLIB_DISP_ROW_UPPER)
             && (region->y_top < 0 || region->y_top > GLIB_DISP_ROW_UPPER));
 }
 
-static void ICACHE_FLASH_ATTR toss_func(void *arg) {
+static void ICACHE_FLASH_ATTR
+toss_func(void *arg) {
     toss_curr_region.x_left += toss_x;
     toss_curr_region.x_right += toss_x;
     toss_curr_region.y_top += toss_y;
@@ -834,8 +859,9 @@ static void ICACHE_FLASH_ATTR toss_func(void *arg) {
     ++toss_anim_time;
 }
 
-void ICACHE_FLASH_ATTR glib_anim_toss_away(const glib_anim_direction dir, const struct glib_window *const region,
-                                           const uint16_t hold_frames, const uint16_t acceleration, void (*toss_cb)(void)) {
+void ICACHE_FLASH_ATTR
+glib_anim_toss_away(const glib_anim_direction dir, const struct glib_window *const region,
+                    const uint16_t hold_frames, const uint16_t acceleration, void (*toss_cb)(void)) {
     os_timer_disarm(&toss_timer);
     os_timer_setfn(&toss_timer, (os_timer_func_t *)toss_func, NULL);
     os_timer_arm(&toss_timer, anim_delay, 1);
@@ -849,19 +875,24 @@ void ICACHE_FLASH_ATTR glib_anim_toss_away(const glib_anim_direction dir, const 
     toss_y = 0;
 }
 
-void ICACHE_FLASH_ATTR glib_clear_fb_toss_anim(const glib_anim_direction dir, const uint16_t hold_frames, const uint16_t acceleration,
-                                               void (*toss_cb)(void)) {
+void ICACHE_FLASH_ATTR
+glib_clear_fb_toss_anim(const glib_anim_direction dir, const uint16_t hold_frames, const uint16_t acceleration,
+                        void (*toss_cb)(void)) {
     glib_anim_toss_away(dir, &region_full, hold_frames, acceleration, toss_cb);
 }
 
 
+/*
+ * FADEOUT
+ */
 static os_timer_t volatile fadeout_timer;
 static uint8_t fadeout_curr_brightness = GLIB_MAX_BRIGHTNESS;
 static uint32_t fadeout_bg;
 static uint16_t fadeout_hold_frames, fadeout_acceleration;
 static void (*fadeout_callback)(void);
 
-static void ICACHE_FLASH_ATTR fadeout_func(void *arg) {
+static void ICACHE_FLASH_ATTR
+fadeout_func(void *arg) {
     int16_t reduce_by = 0;
     if (!fadeout_hold_frames) {
         reduce_by = 1 + (
@@ -889,9 +920,9 @@ static void ICACHE_FLASH_ATTR fadeout_func(void *arg) {
     glib_set_brightness(fadeout_curr_brightness);
 }
 
-void ICACHE_FLASH_ATTR glib_clear_disp_fadeout_anim(const uint32_t bg_col, const uint16_t hold_frames, const uint16_t acceleration,
-                                                    void (*fadeout_cb)(void)) {
-    os_printf("inside fadeout\n");
+void ICACHE_FLASH_ATTR
+glib_clear_disp_fadeout_anim(const uint32_t bg_col, const uint16_t hold_frames, const uint16_t acceleration,
+                             void (*fadeout_cb)(void)) {
     os_timer_disarm(&fadeout_timer);
     os_timer_setfn(&fadeout_timer, (os_timer_func_t *)fadeout_func, NULL);
     os_timer_arm(&fadeout_timer, anim_delay, 1);
@@ -903,7 +934,8 @@ void ICACHE_FLASH_ATTR glib_clear_disp_fadeout_anim(const uint32_t bg_col, const
 }
 
 
-void ICACHE_FLASH_ATTR glib_clear_fb(const glib_object_specifier obj) {
+void ICACHE_FLASH_ATTR
+glib_clear_fb(const glib_object_specifier obj) {
     uint16_t i;
     switch (obj) {
     case GLIB_OS_ALL:
@@ -945,17 +977,20 @@ void ICACHE_FLASH_ATTR glib_clear_fb(const glib_object_specifier obj) {
 }
 
 
-void ICACHE_FLASH_ATTR glib_set_background(const uint32_t pattern) {
+void ICACHE_FLASH_ATTR
+glib_set_background(const uint32_t pattern) {
     background_pattern = pattern;
 }
 
 
-void glib_fb2gram(void) {
+void
+glib_fb2gram(void) {
     glib_update_gram((uint32_t *)framebuffer);
 }
 
 
-void ICACHE_FLASH_ATTR glib_reset(void) {
+void ICACHE_FLASH_ATTR
+glib_reset(void) {
     glib_reset_display();
     glib_clear_disp(background_pattern);
     glib_set_textbox(NULL);
@@ -968,7 +1003,8 @@ void ICACHE_FLASH_ATTR glib_reset(void) {
 }
 
 
-void ICACHE_FLASH_ATTR glib_init(void) {
+void ICACHE_FLASH_ATTR
+glib_init(void) {
     glib_reset();
     glib_set_anim_delay_ms(GLIB_ANIM_MIN_DELAY_MS);
     glib_set_textbox(NULL);

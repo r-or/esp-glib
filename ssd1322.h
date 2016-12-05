@@ -1,3 +1,7 @@
+/*
+ * ssd1322.h
+ */
+
 // DEFAULTS
 // see end of file
 
@@ -11,9 +15,33 @@
 #include "user_interface.h"
 #include "esp-glib.h"
 
-void ssd1322_send_data(const uint32_t *const qbytes, const uint16_t qbytes_no);
-void ssd1322_send_command(const uint8_t *const cmd, const uint8_t cmd_len);
-void ssd1322_send_command_list(const uint8_t *const cmd_list, const uint8_t list_len);
+/**
+ * @brief ssd1322_send_data send quadbytes (uint32) to display controller
+ * @param qbytes
+ * @param qbytes_no number
+ */
+void
+ssd1322_send_data(const uint32_t *const qbytes, const uint16_t qbytes_no);
+
+/**
+ * @brief ssd1322_send_command single (multibyte) command
+ * @param cmd
+ * @param cmd_len
+ */
+void
+ssd1322_send_command(const uint8_t *const cmd, const uint8_t cmd_len);
+
+/**
+ * @brief ssd1322_send_command_list multiple multibyte commands
+ * Layout:  (uint8_t *) {
+ *              CMD1,   cmd1_length, cmd1_payload1, cmd1_payload2, ...,
+ *              CMD2, ...
+ *          }
+ * @param cmd_list
+ * @param list_len
+ */
+void
+ssd1322_send_command_list(const uint8_t *const cmd_list, const uint8_t list_len);
 
 
 /**************

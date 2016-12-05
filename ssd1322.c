@@ -1,5 +1,5 @@
 /*
- *
+ * ssd1322.c
  * License: MIT / x11
  * Copyright 2016 Tobias Däullary
  *
@@ -30,7 +30,8 @@ static const struct glib_window_phy max_region_phy = {
 };
 
 // send stuff to GRAM
-void ICACHE_FLASH_ATTR ssd1322_send_data(const uint32_t *const qbytes, const uint16_t qbytes_no) {
+void ICACHE_FLASH_ATTR
+ssd1322_send_data(const uint32_t *const qbytes, const uint16_t qbytes_no) {
     uint16_t i = 0;
 #if (VERBOSE > 1)
     os_printf("ssd1322_send_data: sending %lu bytes...\n", qbytes_no * 4);
@@ -63,7 +64,8 @@ void ICACHE_FLASH_ATTR ssd1322_send_data(const uint32_t *const qbytes, const uin
 }
 
 // send stuff to cmd register
-void ICACHE_FLASH_ATTR ssd1322_send_command(const uint8_t *const cmd, const uint8_t cmd_len) {
+void ICACHE_FLASH_ATTR
+ssd1322_send_command(const uint8_t *const cmd, const uint8_t cmd_len) {
     write_to_gram = 0;
 #if (SSD1322_IO == SSD1322_SPI4WIRE)
     gpio_output_set(0, SSD1322_DC_PIN, SSD1322_DC_PIN, 0);  // set D/C line low
@@ -97,7 +99,8 @@ void ICACHE_FLASH_ATTR ssd1322_send_command(const uint8_t *const cmd, const uint
 #endif
 }
 
-void ICACHE_FLASH_ATTR ssd1322_send_command_list(const uint8_t *const cmd_list, const uint8_t list_len) {
+void ICACHE_FLASH_ATTR
+ssd1322_send_command_list(const uint8_t *const cmd_list, const uint8_t list_len) {
     write_to_gram = 0;
     uint8_t i = 0;
 #if VERBOSE > 1
@@ -155,7 +158,8 @@ void ICACHE_FLASH_ATTR ssd1322_send_command_list(const uint8_t *const cmd_list, 
 #endif
 }
 
-static void ICACHE_FLASH_ATTR ssd1322_set_area_phy(const struct glib_window_phy *const region) {
+static void ICACHE_FLASH_ATTR
+ssd1322_set_area_phy(const struct glib_window_phy *const region) {
     if (region != NULL) {
         if (SSD1322_ROW_START + region->row_top > SSD1322_ROW_END
                 || region->row_bottom > region->row_top
@@ -221,7 +225,8 @@ static void ICACHE_FLASH_ATTR ssd1322_set_area_phy(const struct glib_window_phy 
  * IMPLEMENTATION OF GLIB FUNCTIONALITY
  */
 
-void ICACHE_FLASH_ATTR glib_set_brightness(const uint8_t value) {
+void ICACHE_FLASH_ATTR
+glib_set_brightness(const uint8_t value) {
     uint8_t cmd[] = {
         SSD1322_CONTRAST, value,
     };
@@ -229,7 +234,8 @@ void ICACHE_FLASH_ATTR glib_set_brightness(const uint8_t value) {
 }
 
 
-void ICACHE_FLASH_ATTR glib_set_enable(const uint8_t enable) {
+void ICACHE_FLASH_ATTR
+glib_set_enable(const uint8_t enable) {
     uint8_t cmd;
     if (enable)
         cmd = SSD1322_DISP_ON;
@@ -239,7 +245,8 @@ void ICACHE_FLASH_ATTR glib_set_enable(const uint8_t enable) {
 }
 
 
-void ICACHE_FLASH_ATTR glib_clear_disp(const uint32_t pattern) {
+void ICACHE_FLASH_ATTR
+glib_clear_disp(const uint32_t pattern) {
 #if (SSD1322_MODE == 256*64)
     uint16_t i = 0;
     ssd1322_set_area_phy(NULL); // reset area
@@ -259,7 +266,8 @@ void ICACHE_FLASH_ATTR glib_clear_disp(const uint32_t pattern) {
 }
 
 
-void ICACHE_FLASH_ATTR glib_update_gram(uint32_t *const framebuffer) {
+void ICACHE_FLASH_ATTR
+glib_update_gram(uint32_t *const framebuffer) {
 #if (VERBOSE > 1)
     os_printf("update_gram... segl: %d ... segr: %d; rowb: %d ... rowt: %d\n", fb_upd_reg.seg_left, fb_upd_reg.seg_right,
               fb_upd_reg.row_bottom, fb_upd_reg.row_top);
@@ -299,16 +307,19 @@ void ICACHE_FLASH_ATTR glib_update_gram(uint32_t *const framebuffer) {
 }
 
 // convert logical row to physical row
-inline int16_t glib_row_log2phys(const int16_t log_row) {
+inline int16_t
+glib_row_log2phys(const int16_t log_row) {
     return SSD1322_ROWS - 1 - log_row;
 }
 
-inline int16_t glib_col_log2phys(const int16_t log_col) {
+inline int16_t
+glib_col_log2phys(const int16_t log_col) {
     return log_col;
 }
 
 // convert whole logical window
-inline struct glib_window_phy glib_region_log2phys(const struct glib_window *const log_region) {
+inline struct glib_window_phy
+glib_region_log2phys(const struct glib_window *const log_region) {
     return (struct glib_window_phy) {
         .seg_left = (uint8_t)glib_col_log2phys(log_region->x_left) / 8,
         .seg_right = (uint8_t)glib_col_log2phys(log_region->x_right) / 8,
@@ -317,7 +328,8 @@ inline struct glib_window_phy glib_region_log2phys(const struct glib_window *con
     };
 }
 
-static inline void tag_upd_reg(const struct glib_window_phy *const region) {
+static inline void
+tag_upd_reg(const struct glib_window_phy *const region) {
 #if (VERBOSE > 1)
     struct glib_window_phy old = fb_upd_reg;
 #endif
@@ -343,15 +355,17 @@ static inline void tag_upd_reg(const struct glib_window_phy *const region) {
 #endif
 }
 
-void glib_tag_upd_reg_log(const struct glib_window *const region) {
+void
+glib_tag_upd_reg_log(const struct glib_window *const region) {
     struct glib_window_phy tmp = glib_region_log2phys(region);
     tag_upd_reg(&tmp);
 }
 
-uint8_t ICACHE_FLASH_ATTR glib_draw(uint32_t *const to_buf, const uint16_t x_ul, const uint16_t y_ul, uint32_t *const bitmap,
+uint8_t ICACHE_FLASH_ATTR
+glib_draw(uint32_t *const to_buf, const uint16_t x_ul, const uint16_t y_ul, uint32_t *const bitmap,
                                     const uint16_t height, const uint16_t width, const glib_draw_args args) {
     if (!height || !width)
-        return 0;
+        return 1;
 
     // convert to actual physical coordinates
     uint16_t x_ul_ph = glib_col_log2phys(x_ul);
@@ -511,19 +525,22 @@ uint8_t ICACHE_FLASH_ATTR glib_draw(uint32_t *const to_buf, const uint16_t x_ul,
 }
 
 
-inline void glib_setpix(uint32_t *const seg, uint8_t id, const uint8_t value) {
+inline void
+glib_setpix(uint32_t *const seg, uint8_t id, const uint8_t value) {
     // clear pix
     *seg &= ~((uint32_t)0xF << ((32 - SSD1322_PIXDEPTH) - id * SSD1322_PIXDEPTH));
     // set new val
     *seg |= (uint32_t)value << ((32 - SSD1322_PIXDEPTH) - id * SSD1322_PIXDEPTH);
 }
 
-inline uint8_t glib_getpix(const uint32_t* const seg, const uint8_t id) {
+inline uint8_t
+glib_getpix(const uint32_t* const seg, const uint8_t id) {
     return (uint8_t)((*seg << id * SSD1322_PIXDEPTH) >> (32 - SSD1322_PIXDEPTH));
 }
 
 
-void ICACHE_FLASH_ATTR glib_reset_display(void) {
+void ICACHE_FLASH_ATTR
+glib_reset_display(void) {
     fb_upd_reg = default_region_phy;
     os_delay_us(5000);
     gpio_output_set(0, SSD1322_RESET_PIN, SSD1322_RESET_PIN, 0);
@@ -536,7 +553,8 @@ void ICACHE_FLASH_ATTR glib_reset_display(void) {
 }
 
 // init SPI & SSD1322_
-void ICACHE_FLASH_ATTR glib_init_display(void) {
+void ICACHE_FLASH_ATTR
+glib_init_display(void) {
     // SPI config
     spi_init(HSPI);
     spi_mode(HSPI, 1, 0); // 'trailing edge': positive edge
