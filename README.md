@@ -9,8 +9,8 @@ Included are right now:
   * textbox support
   * line-break on words
   * backspace support
-  * UTF-8 support (escape with 'u+xxxx' or 'U+xxxxxxxx')
-  * ...
+  * UTF-8 support (escape with 'u+xxxx' or 'U+xxxxxxxx')...
+  
 * Some simple animations
 * Some primitives
 * driver for SSD1322. SPI is done with [MetalPhreak's](https://github.com/MetalPhreak/ESP8266_SPI_Driver) SPI  driver.
@@ -39,6 +39,18 @@ glib_fb2gram();                     // push framebuffer to display graphics RAM 
 ```
 \* see https://en.wikipedia.org/wiki/Typeface#Font_metrics
 
-Fonts and assets (bitmaps) can be created with a bitmap font converter such as [andryblack's](https://github.com/andryblack/fontbuilder) fontbuilder and converted to greyscale via my tool 'png2gs.py' in tools/.
+Fonts and assets (bitmaps) can be created with a bitmap font converter such as [andryblack's](https://github.com/andryblack/fontbuilder) fontbuilder and converted to greyscale via 'png2gs.py' in tools/.
 
-TODO: sample project using this library/driver
+[Sample project using this library/driver](https://github.com/r-or/esp-glib-example)
+
+png2gs
+======
+* Install pypng: ```pip3 install pypng```
+* To convert assets/bitmaps: ```./png2gs -nf resources/myassets/* -a 4 -d 4```
+* To convert fonts: ```./png2gs -f resources/myfonts/* -a 4 -d 4```,
+
+where the ```-d``` switch selects target bit depth (16 shades of grey in this example for SSD1322) and ```-a``` can be used to align data by that many bytes (for ESP8266 data in flash must be 4 byte aligned).
+
+For additional options call png2gs without arguments.
+
+Take a look at the headers created for means of accessing the data once written to flash.
