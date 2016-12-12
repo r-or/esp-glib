@@ -3,6 +3,7 @@
 import sys
 from xml.dom import minidom
 import png
+import pprint
 from array import array
 from matplotlib import pyplot as plt
 import numpy as np
@@ -23,7 +24,15 @@ class BmpStack:
         self.fnames = []
         self.sizes = []
         self.dims = []
+        self.prefix = 'ass'
         
+        self.bmpSuffixes = ['.png', '.PNG']
+        
+    def filename(self, string, suffix):
+        for s in suffix:
+            string = string.replace(s, '')
+        string = string.split('/')[-1]
+        return string
         
     #   quantise(
     #       ndarray(image),
@@ -34,9 +43,9 @@ class BmpStack:
                 ((math.pow(2, depth) / math.pow(2, self.tdepth)) + 1))) for k in imgarray])
                 
                 
+    # consecutive pixels inside memory:
     #   stuff(
-    #       ndarray(image),
-    #       int(targetDepth))
+    #       ndarray(image))
     def stuff(self, imgarray8bit):
         stuffedarr = array('B')
         bytenum = math.ceil(len(imgarray8bit) / (8 / self.tdepth))
@@ -74,10 +83,10 @@ class BmpStack:
             
         outb.write(struct.pack('{}{}B'.format('<' if littleendian else '>', len(imgarray)), *imgarray))
         outb.close()
-        print('Created bitmap:', outname)
+        print('Created bitmap:', outname + ',', len(imgarray), 'bytes on flash.')
         
         
-    def read(self, preview):
+    def read(self, showBmp):
         for fbmp in self.lbmp:
             preader = png.Reader(filename=fbmp)
             pngw, pngh, pngpixels, pngmeta = preader.read_flat()
@@ -107,10 +116,10 @@ class BmpStack:
             self.lbmpFinal.append(gspixels)
         
             #print(gspixels, gspixels.shape, pngh, pngw)
-            self.fnames.append(fbmp.replace('.png', '').replace('.PNG', '').split('/')[-1].upper())
+            self.fnames.append(self.filename(fbmp, self.bmpSuffixes).upper())
             self.dims.append((pngw, pngh))
             
-            if preview:
+            if showBmp:
                 plt.imshow(np.reshape(gspixels, (pngh, pngw)), interpolation='nearest', cmap='Greys_r')
                 plt.axis('equal')
                 ax = plt.gca()
@@ -133,7 +142,7 @@ class BmpStack:
             self.sizes.append(len(sbmp))
             finalbytearr.extend(sbmp)
             
-        self.saveimg(finalbytearr, twlen, lendian, outname + '_{}bit.gray'.format(self.tdepth))
+        self.saveimg(finalbytearr, self.twlen, lendian, outname + '_{}bit.gray'.format(self.tdepth))
         print("Assets found:", self.fnames)
         
         
@@ -143,38 +152,39 @@ class BmpStack:
             '#include "stdint.h"\n\n'.format(outname.upper(), outname.upper())
             
         declares = \
-            'struct asset_info {\n' \
+            'struct {}_info {{\n' \
             '    uint32_t address;\t// offset to asset storage on flash\n' \
             '    uint32_t length;\t// size in bytes\n' \
             '    uint16_t width;\n' \
             '    uint16_t height;\n' \
-            '};\n\n'
+            '}};\n\n'.format(self.prefix)
             
         declares += \
-            'typedef enum {\n' \
-            '    ASSET_NONE,\n'
+            'typedef enum {{\n' \
+            '    {}_NONE,\n'.format(self.prefix.upper())
         for name in self.fnames:
-            declares += '    ASSET_{},\n'.format(name)
-        declares += '} asset_bmp_name;\n\n'
+            declares += '    {}_{},\n'.format(self.prefix.upper(), name)
+        declares += '}} {}_bmp_name;\n\n'.format(self.prefix)
         
-        declares += 'uint8_t asset_get(struct asset_info *const return_ainfo, const asset_bmp_name asset);\n\n'
+        declares += 'uint8_t {}_get(struct {}_info *const return_ainfo, const {}_bmp_name asset);\n\n'.format( \
+                    self.prefix, self.prefix, self.prefix)
         
         body = \
             '#include "{}.h"\n{}\n' \
-            '{} asset_get(struct asset_info *const return_ainfo, const asset_bmp_name asset) {{\n' \
-            '    switch (asset) {{\n'.format(outname, \
+            '{} {}_get(struct {}_info *const return_ainfo, const {}_bmp_name asset) {{\n' \
+            '    switch (asset) {{\n'.format(self.prefix, self.prefix, self.prefix, outname, \
                                          '#include "user_interface.h"\n' if storeonflash else '', \
                                          'static uint8_t' if not storeonflash else 'uint8_t ICACHE_FLASH_ATTR')
             
         for address, dimension, size, name in zip(self.bmpaddress, self.dims, self.sizes, self.fnames):
             body += \
-                '    case ASSET_{}:\n' \
-                '        *return_ainfo = (struct asset_info) {{\n' \
+                '    case {}_{}:\n' \
+                '        *return_ainfo = (struct {}_info) {{\n' \
                 '            .address = 0x{:08x},\n' \
                 '            .length = {},\n' \
                 '            .width = {},\n' \
                 '            .height = {}\n' \
-                '        }}; break;\n'.format(name, address, size, dimension[0], dimension[1])
+                '        }}; break;\n'.format(self.prefix.upper(), name, self.prefix, address, size, dimension[0], dimension[1])
                 
         body += \
             '    default: return 1;\n' \
@@ -184,26 +194,343 @@ class BmpStack:
         
         
         out = open(outname + '.h', 'w')
-        out.write(defs + declares + '#endif');
+        out.write(defs + declares + '#endif')
         out.close()
         out = open(outname + '.c', 'w')
         out.write(body)
+        
+    def proc(self, showBmp, showFnt, onflash, lendian):
+        self.read(showBmp)
+        self.finalise(lendian, 'assets')
+        self.create_meta('assets', onflash)
         
         
     
 class FontStack(BmpStack):
     def __init__(self, bitmaps, xmls, targetDepth, targetWordLength, byteAlign):
-        BmpStack.__init__(bitmaps, targetDepth, targetWordLength, byteAlign)
+        super(FontStack, self).__init__(bitmaps, targetDepth, targetWordLength, byteAlign)
         self.lxml = xmls
-        if len(self.lxml) != len(self.lbmp):
-            print("Input error!")
+        self.lxmlFinal = []
+        self.fontmap = []
+        self.fontInfo = {}
+        self.fontMetrics = []
+        self.charinfo = {}
+        self.bytearr = array('B')
+        self.prefix = 'fnt'
+        
+    def parseInput(self):
+        strippedXml = [(self.filename(x, ['.xml', '.XML']), x) for x in self.lxml]
+        strippedPng = [(self.filename(p, ['.png', '.PNG']), p) for p in self.lbmp]
+        strippedXml = sorted(strippedXml, key = lambda x: x[1])
+        strippedPng = sorted(strippedPng, key = lambda p: p[1])
+        
+        for x in strippedXml:
+            match = [(p, k) for p, k in strippedPng if p == x[0]][0]
+            if match:
+                self.fontmap.append((x[0], x[1], match[1]))
+                
+        if not self.fontmap:
+            print('Error: Didn\'t find any matching fonts.')
+            print('XMLs:', strippedXml)
+            print('PNGs:', strippedPng)
             printHelp()
             sys.exit()
             
+        self.lbmp = [p[2] for p in self.fontmap]
+        self.lxml = [x[1] for x in self.fontmap]
+            
+    def extractChars(self, showChars):
+        lfntpos = 0
+        for cfont, gspixels, bmpdim in zip(self.fontmap, self.lbmpFinal, self.dims):
+            self.fontInfo[cfont[0]] = {}
+            doc = minidom.parse(cfont[1])
+            
+            fdesc = doc.getElementsByTagName('description')[0]
+            fmets = doc.getElementsByTagName('metrics')[0]
+            ftex = doc.getElementsByTagName('texture')[0]
+            self.fontInfo[cfont[0]]['desc'] = fdesc
+            self.fontInfo[cfont[0]]['metrics'] = fmets
+            self.fontInfo[cfont[0]]['tex'] = ftex
+            self.fontInfo[cfont[0]]['name'] = fdesc.attributes['family'].value + \
+                                              '_' + fdesc.attributes['style'].value + \
+                                              '_' + fmets.attributes['ascender'].value            
+            
+            chars = doc.getElementsByTagName('char')
+            self.fontInfo[cfont[0]]['chars'] = []
+            chaddresses = []
+            fntMetric = {
+                'maxfontlen': 0,
+                'maxfontwidth': 0,
+                'minfontwidth': 9999999,
+                'maxfontheight': 0,
+                'maxfontascent': 0
+                }
+            
+            chInfo = []
+
+            for char in chars:
+                chx = int(char.attributes['rect'].value.split()[0])
+                chy = int(char.attributes['rect'].value.split()[1])
+                chw = int(char.attributes['rect'].value.split()[2])
+                chh = int(char.attributes['rect'].value.split()[3])
+                chadv = int(char.attributes['advance'].value)
+                chxoff = int(char.attributes['offset'].value.split()[0])
+                chyoff = int(char.attributes['offset'].value.split()[1])
+                chInfo.append({
+                    'ch': char,
+                    'address': 0,
+                    'kerning': []
+                    })
+
+                subimage = array('B')
+                for line in range(0, chh):
+                    subimage.extend(gspixels[chx + (chy + line) * bmpdim[0] : (chx + chw) + (chy + line) * bmpdim[0]])
+
+                
+                subimagearr = np.array(subimage)
+                
+                if showChars:
+                    print(subimagearr, subimagearr.shape, chh, chw)
+                    print('current ID:', char.attributes['id'].value)
+                    plt.imshow(np.reshape(subimagearr, (chh, chw)), interpolation='nearest', cmap='Greys_r')
+                    plt.axis('equal')
+                    ax = plt.gca()
+                    ax.set_axis_bgcolor('black')
+                    plt.show()
+            
+                subimagebytearr = self.stuff(subimagearr)
+                 
+                # store in bytelist
+                if talign:
+                    while len(subimagebytearr) % talign:
+                        subimagebytearr.append(0)
+                chInfo[-1]['address'] = len(self.bytearr)
+                self.bytearr.extend(subimagebytearr)
+                chInfo[-1]['len'] = len(subimagebytearr)
+                
+                if len(subimagebytearr) > fntMetric['maxfontlen']:
+                    fntMetric['maxfontlen'] = len(subimagebytearr)
+                if chw > fntMetric['maxfontwidth']:
+                    fntMetric['maxfontwidth'] = chw
+                if chadv < fntMetric['minfontwidth']:
+                    fntMetric['minfontwidth'] = chadv;
+                if chh > fntMetric['maxfontheight']:
+                    fntMetric['maxfontheight'] = chh
+                if chyoff > fntMetric['maxfontascent']:
+                    fntMetric['maxfontascent'] = chyoff
+                    
+                    
+                # kerning
+                kernings = char.getElementsByTagName('kerning')
+                lkern = []
+                if kernings != []:
+                    for kerning in kernings:
+                        lkern.append((ord(kerning.attributes['id'].value), kerning.attributes['advance'].value))
+                    
+                    lkern = sorted(lkern, key=lambda x: x[1])
+                chInfo[-1]['kerning'] = lkern
+            
+            self.fontInfo[cfont[0]]['chars'] = chInfo
+            self.fontInfo[cfont[0]]['metricUnion'] = fntMetric
+            self.fontInfo[cfont[0]]['fntlen'] = len(self.bytearr) - lfntpos
+            lfntpos = len(self.bytearr)
+            
+        
+    def create_meta(self, outname, storeonflash):
+        addrSize = '16' if len(self.bytearr) > 65536 else '32'
+        defs = \
+            '#ifndef __{}_H__\n#define __{}_H__\n\n' \
+            '#include "stdint.h"\n\n'.format(outname.upper(), outname.upper())
+            
+        declares = \
+        'struct {}_info {{\n' \
+        '    uint32_t size;               \t// size in bytes\n' \
+        '    uint8_t pix_depth;           \t// bits per pixel\n' \
+        '    const char *name;\n' \
+        '    uint8_t height;              \t// height including line spacing\n' \
+        '    uint8_t ascend;              \t// usual ascent excluding accents\n' \
+        '    uint16_t max_char_size_int8; \t// bytes to store biggest char (2D)\n' \
+        '    uint16_t max_char_size_int32;\n' \
+        '    uint16_t max_char_height;    \t// pix\n' \
+        '    uint16_t max_char_width;     \t// pix\n' \
+        '    uint16_t min_char_width;     \t// useful for worst case num of printable chars (min advance)\n' \
+        '    uint16_t max_char_ascent;    \t// max char height with respect to base line (for cursor placement)\n' \
+        '}};\n\n' \
+        'struct {}_char_info {{\n' \
+        '    int8_t xoffset;              \t// pixel offset to top left corner\n' \
+        '    int8_t yoffset;\n' \
+        '    uint8_t advance;\n' \
+        '    uint{}_t address;\n' \
+        '    uint16_t length;             \t// length in bytes\n' \
+        '    uint8_t width;\n' \
+        '    uint8_t height;\n' \
+        '}};\n\n'.format(self.prefix, self.prefix, addrSize)
+        
+        declares += \
+            'typedef enum {\n'
+            
+        chbody = \
+            'uint8_t{}\n{}_get_char(struct {}_char_info *const ch_info, const uint32_t ch, const {}_font fnt) {{\n' \
+            '    switch(fnt) {{\n'.format('' if not storeonflash else ' ICACHE_FLASH_ATTR', self.prefix, self.prefix, self.prefix)
+            
+        kernbody = \
+            'int8_t{}\n{}_get_kerning(const uint32_t ch1, const uint32_t ch2, const {}_font fnt) {{\n' \
+            '    switch(fnt) {{\n'.format('' if not storeonflash else ' ICACHE_FLASH_ATTR', self.prefix, self.prefix)
+            
+        fntbody = \
+            'void{} {}_get_info({}_info *const finfo, const {}_font fnt) {{\n' \
+            '    switch(fnt) {{\n'.format('' if not storeonflash else ' ICACHE_FLASH_ATTR', self.prefix, self.prefix, self.prefix)
+                        
+        for cfname, cfont in self.fontInfo.items():
+            declares += '    {}_{},\n'.format(self.prefix.upper(), cfname.upper())
+            
+            chbody += \
+                '    case {}_{}:\n' \
+                '        switch(ch) {{\n'.format(self.prefix.upper(), cfname.upper())
+                
+            kernbody += \
+                '    case {}_{}:\n' \
+                '        switch(ch1) {{\n'.format(self.prefix.upper(), cfname.upper())
+                
+            fntbody += \
+                 '    case {}_{}:\n'.format(self.prefix.upper(), cfname.upper())
+                
+            #pp = pprint.PrettyPrinter(indent=4)
+            #pp.pprint(cfont)
+            for char in cfont['chars']:
+                chx = int(char['ch'].attributes['rect'].value.split()[0])
+                chy = int(char['ch'].attributes['rect'].value.split()[1])
+                chw = int(char['ch'].attributes['rect'].value.split()[2])
+                chh = int(char['ch'].attributes['rect'].value.split()[3])
+                chadv = int(char['ch'].attributes['advance'].value)
+                chxoff = int(char['ch'].attributes['offset'].value.split()[0])
+                chyoff = int(char['ch'].attributes['offset'].value.split()[1])
+                #chid = int.from_bytes(char['ch'].attributes['id'].value.encode('utf-8'), byteorder='big')
+                chid = ord(char['ch'].attributes['id'].value)
+            
+                chbody += \
+                    '        case {}:\n' \
+                    '            *ch_info = (struct {}_char_info) {{\n' \
+                    '                .xoffset = {},\n' \
+                    '                .yoffset = {},\n' \
+                    '                .advance = {},\n' \
+                    '                .width = {},\n' \
+                    '                .height = {},\n' \
+                    '                .address = 0x{:08x},\n' \
+                    '                .length = {}\n' \
+                    '            }}; break;\n'.format( \
+                         '0x{:X}'.format(chid) if chid > 127 else '\'{:c}\''.format(chid), \
+                         self.prefix, \
+                         chxoff, \
+                         chyoff, \
+                         chadv, \
+                         chw, \
+                         chh, \
+                         char['address'], \
+                         char['len'])
+
+                lkern = char['kerning']
+                if lkern:
+                    kernbody += \
+                        '        case {}:\n' \
+                        '            switch(ch2) {{\n'.format( \
+                            '0x{:X}'.format(chid) if chid > 127 else '\'{:c}\''.format(chid))
+                    for i in range(0, len(lkern)):
+                        if i > 0 and int(lkern[i - 1][1]) != int(lkern[i][1]):
+                            kernbody += '                return {};\n'.format(lkern[i - 1][1])
+                        kernbody += '            case {}:\n'.format(
+                            '0x{:X}'.format(lkern[i][0]) if lkern[i][0] > 127 else '\'{:c}\''.format(lkern[i][0]))
+                    kernbody += '                return {};\n' \
+                        '            default:\n' \
+                        '                return 0;\n' \
+                        '            }}\n'.format(lkern[-1][1])
+            
+            kernbody += \
+                '        default:\n' \
+                '            return 0;\n' \
+                '        } // switch(ch1)\n'
+                
+            chbody += \
+                '        default: return 1;\n' \
+                '        } // switch(ch)\n' \
+                '        break;\n' \
+
+            
+            fntbody += \
+                '        *finfo = (struct {}_info) {{\n' \
+                '            .size = {},\n' \
+                '            .pix_depth = {},\n' \
+                '            .name = \"{}\",\n' \
+                '            .height = {},\n' \
+                '            .ascend = {}\n' \
+                '            .max_char_size_int8 = {},\n' \
+                '            .max_char_size_int32 = {},\n' \
+                '            .max_char_height = {},\n' \
+                '            .max_char_width = {},\n' \
+                '            .min_char_width = {},\n' \
+                '            .max_char_ascent = {},\n' \
+                '        }}; break;\n'.format(self.prefix, cfont['fntlen'], self.tdepth, cfont['name'], \
+                    cfont['metrics'].attributes['height'].value, cfont['metrics'].attributes['ascender'].value, \
+                    cfont['metricUnion']['maxfontlen'], math.ceil(cfont['metricUnion']['maxfontlen'] / 4), \
+                    cfont['metricUnion']['maxfontheight'], cfont['metricUnion']['maxfontwidth'], \
+                    cfont['metricUnion']['minfontwidth'], cfont['metricUnion']['maxfontascent'])    
+                                                   
+        chbody += \
+            '    default: return 1;\n' \
+            '    }} // switch(fnt)\n' \
+            '    return 0;\n' \
+            '}}\n\n'.format(self.prefix.upper(), cfname.upper())
+                
+        kernbody += \
+            '    default: \n' \
+            '        return 0;\n' \
+            '    }} // switch(fnt)\n' \
+            '}} // (get_kerning)\n\n'.format(self.prefix.upper(), cfname.upper())
+            
+        fntbody += \
+            '    default: return 1;\n' \
+            '    }} // switch(fnt)\n' \
+            '    return 0;\n' \
+            '}}\n\n'.format(self.prefix.upper(), cfname.upper())
+                
+        declares += \
+            '}} {}_font;\n\n' \
+            'uint8_t\n{}_get_char(struct {}_char_info *const ch_info, const uint32_t ch, const {}_font fnt);\n\n' \
+            'int8_t\n{}_get_kerning(const uint32_t ch1, const uint32_t ch2, const {}_font fnt);\n\n' \
+            'void\n{}_get_info(struct {}_info *const finfo, const {}_font fnt);\n\n'.format( \
+                self.prefix, self.prefix, self.prefix, self.prefix, self.prefix, \
+                self.prefix, self.prefix, self.prefix, self.prefix)
+                
+                
+        body = '#include "{}.h"\n'.format(outname)        
+        body += '#include "user_interface.h"\n\n' if storeonflash else '\n'
+
+
+        out = open(outname + '.h', 'w')
+        out.write(defs + declares + '#endif')
+        out.close()
+        out = open(outname + '.c', 'w')
+        out.write(body + fntbody + chbody + kernbody)        
+
+        print('Created {}.h, {}.c. Copy to resource/. Also do a clean make' \
+            ' or gcc will not update the addresses!'.format(outname, outname))
+      
+    def finalise(self, lendian, outname):
+        self.saveimg(self.bytearr, self.twlen, lendian, outname + '_{}bit.gray'.format(self.tdepth))
+        print("Processed fonts:", self.fnames)
+        
+        
+    def proc(self, showBmp, showFnt, onflash, lendian):
+        self.parseInput()
+        self.read(showBmp)
+        self.extractChars(showFnt)
+        self.finalise(lendian, 'fonts')
+        self.create_meta('fonts', onflash)
+        
     
 
 
-# FUNCTIONS
+# GLOBAL FUNCTIONS
 
 def printHelp():
     print("Usage:", \
@@ -238,16 +565,19 @@ talign = 0
 lend = 1
 sof = 1
 font = False
-preview = False
+preview = False     # preview of bitmaps
+preview2 = False    # verbose font preview
 
 idx = 1
 while idx < len(sys.argv):
     if sys.argv[idx] == '-f':
         font = True
-        while (len(sys.argv) - 2 > idx and not sys.argv[idx + 2].startswith('-')):
-            fxml.append(sys.argv[idx + 1])
-            fpng.append(sys.argv[idx + 2])
-            idx += 2
+        while (len(sys.argv) - 1 > idx and not sys.argv[idx + 1].startswith('-')):
+            if sys.argv[idx + 1].endswith(('.xml', '.XML')):
+                fxml.append(sys.argv[idx + 1])
+            elif sys.argv[idx + 1].endswith(('.png', '.PNG')):
+                fpng.append(sys.argv[idx + 1])
+            idx += 1
     elif sys.argv[idx] == '-nf':
         font = False
         while (len(sys.argv) - 1 > idx and not sys.argv[idx + 1].startswith('-')):
@@ -271,6 +601,9 @@ while idx < len(sys.argv):
         sof = 0
     elif sys.argv[idx] == '-p':
         preview = True;
+    elif sys.argv[idx] == '-P':
+        preview = True;
+        preview2 = True;
     elif sys.argv[idx] == '-h':
         printHelp()
         sys.exit()
@@ -280,258 +613,11 @@ if len(sys.argv) < 2:
     printHelp()
     sys.exit()
     
-
 if not font:
     st = BmpStack(fpng, tdepth, twlen, talign)
 else:
     st = FontStack(fpng, fxml, tdepth, twlen, talign)
 
-st.read(preview)
-st.finalise(lend, 'assets')
-st.create_meta('assets', sof)
+st.proc(preview, preview2, sof, lend)
 
 
-#fntnum = len(fxml)
-
-#if not font:
-#    fxml.append()
-#    
-#    
-#    
-#defs = '#ifndef __FONT_H__\n#define __FONT_H__\n\n'
-
-#defs += '#include "stdint.h"\n\n'
-
-#declares = \
-#    'struct font_info {\n' \
-#    '    uint32_t font_size;\t\t// size in bytes\n' \
-#    '    uint8_t pix_depth;\t\t// bits per pixel\n' \
-#    '    const char *font_name;\n' \
-#    '    uint8_t font_height;\t\t// height including line spacing\n' \
-#    '    uint8_t font_ascend;\t\t// usual ascent excluding accents\n' \
-#    '};\n\n' \
-#    'struct char_info {\n' \
-#    '    int8_t xoffset;\t\t// pixel offset to top left corner\n' \
-#    '    int8_t yoffset;\n' \
-#    '    uint8_t advance;\n' \
-#    '    uint32_t address;\n' \
-#    '    uint16_t length;\t\t// length in bytes\n' \
-#    '    uint8_t width;\n' \
-#    '    uint8_t height;\n' \
-#    '};\n\n' \
-#    'typedef enum {\n'
-#    
-#    
-#    
-#for fnt, bmp in zip(fxml, fpng)
-#    # BITMAP CONVERSION
-#    preader = png.Reader(filename=fpng)
-#    pngw, pngh, pngpixels, pngmeta = preader.read_flat()
-#    pngpixwidth = 4 if pngmeta['alpha'] else 3
-#    gspixels = array('B')
-
-#    if pngpixwidth == 4:
-#    #    if pngpixels[0::4][1:] == pngpixels[0::4][:-1]:      # all R values equal -> no information in RGB channels
-#        gspixels.extend(pngpixels[3::4])  # use alpha channel
-#    #    print("using alpha")
-#    #    else:
-#    #        gspixels.extend(pngpixels[0::4])  # assume greyscale... TODO: convert RGB to greyscale first
-#    #        print("using RGB")
-#    else:
-#        gspixels.extend(pngpixels[0::3])
-#        
-#    # quantise
-#    gspixels = quantise(np.array(gspixels), pngmeta['bitdepth'], tdepth)
-
-
-#    print(gspixels, gspixels.shape, pngh, pngw)
-#    if preview:
-#        plt.imshow(np.reshape(gspixels, (pngh, pngw)), interpolation='nearest', cmap='Greys_r')
-#        plt.axis('equal')
-#        ax = plt.gca()
-#        ax.set_axis_bgcolor('black')
-#        plt.show()
-
-#    if not font:
-#        gspixels = stack(gspixels, tdepth)
-#        outname = fpng.rstrip('.png').rstrip('.PNG').split('/')[-1] + '_{}bit.gray'.format(tdepth)
-#        saveimg(gspixels, twlen, lendian, outname)
-#        sys.exit()
-#        
-#        
-#    # FONT
-#    doc = minidom.parse(fxml)
-
-#    fdesc = doc.getElementsByTagName('description')[0]
-#    fmets = doc.getElementsByTagName('metrics')[0]
-#    ftex = doc.getElementsByTagName('texture')[0]
-
-#    fontname = fdesc.attributes['family'].value + '_' + fdesc.attributes['style'].value + '_' + fmets.attributes['ascender'].value
-
-#    body = \
-#        '{} get_char(struct char_info *const ch_info, const uint8_t ch) {{\n' \
-#        '    switch(ch) {{\n'.format('static uint8_t' if not storeonflash else 'uint8_t ICACHE_FLASH_ATTR')
-#        
-#    chars = doc.getElementsByTagName('char')
-
-#    bytearr = array('B')
-#    maxfontlen = 0
-#    maxfontwidth = 0
-#    minfontwidth = 100
-#    maxfontheight = 0
-#    maxfontascent = 0
-
-#    for char in chars:
-#        chx = int(char.attributes['rect'].value.split()[0])
-#        chy = int(char.attributes['rect'].value.split()[1])
-#        chw = int(char.attributes['rect'].value.split()[2])
-#        chh = int(char.attributes['rect'].value.split()[3])
-#        chadv = int(char.attributes['advance'].value)
-#        chxoff = int(char.attributes['offset'].value.split()[0])
-#        chyoff = int(char.attributes['offset'].value.split()[1])
-
-#        subimage = array('B')
-#        for line in range(0, chh):
-#            subimage.extend(gspixels[chx + (chy + line) * pngw : (chx + chw) + (chy + line) * pngw])
-
-#        subimagearr = np.array(subimage)
-#    #    print(subimagearr, subimagearr.shape, chh, chw)
-#    #    print('current ID:', char.attributes['id'].value)
-#    #    plt.imshow(np.reshape(subimagearr, (chh, chw)), interpolation='nearest', cmap='Greys_r')
-#    #    plt.axis('equal')
-#    #    ax = plt.gca()
-#    #    ax.set_axis_bgcolor('black')
-#    #    plt.show()
-
-#        # stack bytes
-#        subimagebytearr = stack(subimagearr, tdepth)
-#        
-#        # store in bytelist
-#        if talign:
-#            while len(subimagebytearr) % talign:
-#                subimagebytearr.append(0)
-#        chaddress = len(bytearr)
-#        bytearr.extend(subimagebytearr)
-#        
-#        
-#        # BODY
-#        #print(char.attributes['id'].value, '->', char.attributes['id'].value.encode('latin-1')[0])
-#        body += '    case {}:\n' \
-#            '        *ch_info = (struct char_info) {{\n' \
-#            '            .xoffset = {},\n' \
-#            '            .yoffset = {},\n' \
-#            '            .advance = {},\n' \
-#            '            .width = {},\n' \
-#            '            .height = {},\n' \
-#            '            .address = 0x{:08x},\n' \
-#            '            .length = {},\n' \
-#            '        }}; break;\n'.format(char.attributes['id'].value.encode('latin-1')[0], \
-#                                             chxoff, \
-#                                             chyoff, \
-#                                             chadv, \
-#                                             chw, \
-#                                             chh, \
-#                                             chaddress, \
-#                                             len(subimagebytearr))
-#                                             
-#        if len(subimagebytearr) > maxfontlen:
-#            maxfontlen = len(subimagebytearr)
-#        if chw > maxfontwidth:
-#            maxfontwidth = chw
-#        if chadv < minfontwidth:
-#            minfontwidth = chadv;
-#        if chh > maxfontheight:
-#            maxfontheight = chh
-#        if chyoff > maxfontascent:
-#            maxfontascent = chyoff
-#        
-#    body += \
-#        '    default: return 1;\n' \
-#        '    }}\n' \
-#        '    return 0;\n' \
-#        '}}\n\n' \
-#        '{} get_kerning(const uint8_t ch1, const uint8_t ch2) {{\n' \
-#        '    switch(ch1) {{\n'.format('static int8_t' if not storeonflash else 'int8_t ICACHE_FLASH_ATTR')
-#        
-#    # store image
-#    outbname = fpng.rstrip('.png').rstrip('.PNG').split('/')[-1] + '_{}bit.gray'.format(tdepth)
-#    saveimg(bytearr, twlen, lendian, outbname)
-#        
-#    for char in chars:
-#        kernings = char.getElementsByTagName('kerning')
-#        if kernings != []:
-#            lkern = []
-#            for kerning in kernings:
-#                lkern.append((kerning.attributes['id'].value.encode('latin-1')[0], kerning.attributes['advance'].value))
-#            
-#            lkern = sorted(lkern, key=lambda x: x[1])
-#            #print(lkern)
-#            
-#            body += \
-#                '    case {}:\n' \
-#                '        switch(ch2) {{\n'.format(char.attributes['id'].value.encode('latin-1')[0])
-#            for i in range(0, len(lkern)):
-#                if i > 0 and int(lkern[i - 1][1]) != int(lkern[i][1]):
-#                    body += '            return {};\n'.format(lkern[i - 1][1])
-#                body += '        case {}:\n'.format(lkern[i][0])
-#            body += '            return {};\n' \
-#                '        default:\n' \
-#                '            return 0;\n' \
-#                '        }}\n'.format(lkern[-1][1])
-#            
-#    body += \
-#        '    default:\n' \
-#        '        return 0;\n' \
-#        '    }\n' \
-#        '}\n\n'
-
-#    body = \
-#        '{} get_font_info(struct font_info *const finfo) {{\n' \
-#        '    *finfo = (struct font_info) {{\n' \
-#        '        .font_size = {},\n' \
-#        '        .pix_depth = {},\n' \
-#        '        .font_name = \"{}\",\n' \
-#        '        .font_height = {},\n' \
-#        '        .font_ascend = {},\n' \
-#        '    }};\n' \
-#        '}}\n\n'.format('static void' if not storeonflash else 'void ICACHE_FLASH_ATTR', len(bytearr), tdepth, fontname, \
-#            fmets.attributes['height'].value, fmets.attributes['ascender'].value) \
-#        + body
-# 
-
-#declares += \
-#    '} font;\n\n' \
-#    '// latin-1 encoding!\n' \
-#    'uint8_t get_char(struct char_info *const ch_info, const uint8_t ch, const font fnt);\n\n' \
-#    'int8_t get_kerning(const uint8_t ch1, const uint8_t ch2, const font fnt);\n\n' \
-#    'void get_font_info(struct font_info *const finfo, const font fnt);\n\n'
-
-# 
-# 
-#if storeonflash:
-#    body = '#include "user_interface.h"\n\n' + body
-# 
-#defs += \
-#    '#define FONT_{}\n' \
-#    '#define FONT_MAX_CHAR_SIZE_INT8 \t{}\t// bytes to store biggest char (2D)\n' \
-#    '#define FONT_MAX_CHAR_SIZE_INT32 \t{}\n' \
-#    '#define FONT_MAX_CHAR_WIDTH \t{}\t// pix\n' \
-#    '#define FONT_MAX_CHAR_HEIGHT \t{}\t// pix\n' \
-#    '#define FONT_MIN_CHAR_WIDTH \t{}\t// useful for worst case num of printable chars (min advance)\n' \
-#    '#define FONT_MAX_CHAR_ASCENT \t{}\t// max char height with respect to base line (for cursor placement)\n' \
-#    '\n'.format(fontname.upper(), maxfontlen, math.ceil(maxfontlen / 4), \
-#        maxfontwidth, maxfontheight, minfontwidth, maxfontascent);
-# 
-#declares += \
-#    '#endif';
-#    
-#outname = 'font'
-#out = open(outname + '.h', 'w')
-#out.write(defs + declares);
-#out.close()
-#out = open(outname + '.c', 'w')
-#out.write('#include "{}.h"\n\n'.format(outname) + body)
-
-#print('Processed {} glyphs. Size: {} bytes.'.format(len(chars), len(bytearr)))
-#print('Created {}.h, {}.c. Copy to ../. Also do a clean make' \
-#    ' or gcc will not update the addresses!'.format(outname, outname))

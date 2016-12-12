@@ -1,5 +1,6 @@
 .output
-font.c
-font.h
+fonts.c
+fonts.h
 assets.c
 assets.h
+*.gray
