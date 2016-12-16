@@ -10,7 +10,7 @@
 #define __SSD1322_H__
 
 #include "stdint.h"
-#include "../resource/font.h"
+#include "../resource/fonts.h"
 #include "../resource/assets.h"
 #include "user_interface.h"
 #include "esp-glib.h"
@@ -168,8 +168,8 @@ ssd1322_send_command_list(const uint8_t *const cmd_list, const uint8_t list_len)
 #define SSD1322_ROWS            64
 #define SSD1322_MAX_BRIGHTNESS  127
 #define SSD1322_FBSIZE_INT32    SSD1322_SEGMENTS * SSD1322_ROWS                             // 2048
-#define SSD1322_MAX_CHARS       (((SSD1322_SEGMENTS * 8) / _FONT_MIN_CHAR_WIDTH_) * \
-                                    (SSD1322_ROWS / _FONT_MAX_CHAR_HEIGHT_)) + 2            // floor
+#define SSD1322_MAX_CHARS       ((((SSD1322_SEGMENTS * 8) / FNT_MIN_CHAR_WIDTH) * \
+                                    (SSD1322_ROWS / FNT_MAX_CHAR_HEIGHT)) + 2)            // floor
 #endif
 
 // IO modes

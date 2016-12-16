@@ -5,12 +5,10 @@
  *
  */
 
-
 #include "esp-glib.h"
 #include "user_interface.h"
 #include "osapi.h"
 #include "mem.h"
-#include "../resource/font.h"
 
 #define XSTR(x) STR(x)  // convert #define into string
 #define STR(x) #x
@@ -24,6 +22,7 @@
 
 static uint32_t volatile framebuffer[GLIB_FBSIZE_INT32] = {0};       // [64][32], row addr x col addr/2 -> 64 x 64*4
 static uint32_t background_pattern = 0;
+static fnt_font font;
 
 static const struct glib_window region_full = {
     .x_left = GLIB_DISP_COL_LOWER,
@@ -302,12 +301,12 @@ glib_draw_bitmap(const uint16_t x_ul, const uint16_t y_ul, uint32_t address,
 }
 
 
-static uint32_t chbuf[_FONT_MAX_CHAR_SIZE_INT32_];
+static uint32_t chbuf[FNT_MAX_CHAR_SIZE_INT32];
 
 static uint8_t ICACHE_FLASH_ATTR
-glib_draw_char(const struct char_info *const chi, const struct font_info *const fnt,
+glib_draw_char(const struct fnt_char_info *const chi, const struct fnt_info *const fnt,
                const uint16_t x_origin, const uint16_t y_ascend, const glib_draw_args args) {
-    if (y_ascend - fnt->font_ascend < 0) { // TODO: more security checks
+    if (y_ascend - fnt->ascend < 0) { // TODO: more security checks
 
 #if (VERBOSE > 1)
         os_printf("draw_char: not enough top space!\n");
@@ -361,8 +360,8 @@ glib_draw_char(const struct char_info *const chi, const struct font_info *const 
 
 // FONT related states
 static uint8_t line_count = 0;
-static struct font_info fnt_current;
-static struct char_info dotinfo;
+static struct fnt_info fnt_current;
+static struct fnt_char_info dotinfo;
 static struct glib_window textbox;
 static glib_draw_mode txt_drawmode = GLIB_DM_TEXT;
 static uint16_t txt_xpos = 0, txt_ypos = 0;
@@ -392,9 +391,9 @@ glib_set_textbox(const struct glib_window *const region) {
               textbox.y_bottom, textbox.y_top, textbox.x_right, textbox.x_left);
 #endif
 
-    get_font_info(&fnt_current);
-    get_char(&dotinfo, '.');
-    line_count = (textbox.y_bottom - textbox.y_top) / fnt_current.font_height;
+    fnt_get_info(&fnt_current, font);
+    fnt_get_char(&dotinfo, '.', font);
+    line_count = (textbox.y_bottom - textbox.y_top) / fnt_current.height;
 }
 
 void ICACHE_FLASH_ATTR
@@ -513,7 +512,7 @@ glib_print_utf8(const uint32_t *utf8string, const uint16_t x_l, const uint16_t y
     uint16_t currx, curry;
     uint16_t x_l_tb = x_l + textbox.x_left;
     uint16_t y_asc_tb = y_asc + textbox.y_top;      // x, y corrected by textbox offsets
-    struct char_info chi;
+    struct fnt_char_info chi;
     uint32_t override_last_char = (txt_drawmode != GLIB_DM_FREE) ? *chars_in_fb.last_char : 0;
     uint8_t line_force_tag = 0;
     struct glib_window string_max_extent = {     // struct to get dimension of string (pix)
@@ -543,7 +542,7 @@ glib_print_utf8(const uint32_t *utf8string, const uint16_t x_l, const uint16_t y
 #if (VERBOSE > 1)
         os_printf("print: currchr: '%c' (%lu)\n", (currchr < 127) ? currchr : ' ', currchr);
 #endif
-        uint8_t renderable = !get_char(&chi, currchr);
+        uint8_t renderable = !fnt_get_char(&chi, currchr, font);
 
         // update max extents
         if (renderable) {
@@ -572,7 +571,7 @@ glib_print_utf8(const uint32_t *utf8string, const uint16_t x_l, const uint16_t y
                     }
                 } else {
                     // linebreak on SPACE: check for last word
-                    uint8_t maxcharsperline = (textbox.x_right - textbox.x_left) / _FONT_MAX_CHAR_WIDTH_;
+                    uint8_t maxcharsperline = (textbox.x_right - textbox.x_left) / fnt_current.max_char_width;
                     if (chars_in_fb.last_char > chars_in_fb.last_word
                             && chars_in_fb.last_char - chars_in_fb.last_word < maxcharsperline) {
                         os_printf("lastchar: %08x; lastword: %08x; max: %d\n", chars_in_fb.last_char, chars_in_fb.last_word, maxcharsperline);
@@ -588,7 +587,7 @@ glib_print_utf8(const uint32_t *utf8string, const uint16_t x_l, const uint16_t y
                         glib_print_utf8(&(chars_in_fb.chars[1]), x_l_tb, y_asc_tb, args, &currx, &curry);
                     } else {
                         override_last_char = 0;
-                        curry += fnt_current.font_height;
+                        curry += fnt_current.height;
                         currx = x_l_tb;
                         // skip next newline / space
                         if (utf8string[chr_idx + 1] == '\n' || utf8string[chr_idx + 1] == ' ') {
@@ -654,9 +653,9 @@ glib_print_utf8(const uint32_t *utf8string, const uint16_t x_l, const uint16_t y
                 ++chars_in_fb.last_char;
                 *chars_in_fb.last_char = currchr;
             }
-            curry += fnt_current.font_height;
+            curry += fnt_current.height;
             currx = x_l_tb;
-            string_max_extent.y_bottom += fnt_current.font_height;
+            string_max_extent.y_bottom += fnt_current.height;
             continue;
         }
         if (currchr == '\r') {  // carriage return
@@ -669,10 +668,10 @@ glib_print_utf8(const uint32_t *utf8string, const uint16_t x_l, const uint16_t y
         if (!renderable)
             continue;
 
-        if (curry - fnt_current.font_ascend + fnt_current.font_height > textbox.y_bottom) { // no space left, newline type 3
+        if (curry - fnt_current.ascend + fnt_current.height > textbox.y_bottom) { // no space left, newline type 3
 #if (VERBOSE > 1)
             os_printf("print: newline type 3; no space left (y = %d, need %d)\n",
-                      curry, curry - fnt_current.font_ascend + fnt_current.font_height);
+                      curry, curry - fnt_current.ascend + fnt_current.height);
 #endif
             override_last_char = 0;
             glib_clear_tb_txt_state();
@@ -690,7 +689,7 @@ glib_print_utf8(const uint32_t *utf8string, const uint16_t x_l, const uint16_t y
         }
 
         // only kerning if no new line
-        currx += get_kerning(override_last_char, currchr);
+        currx += fnt_get_kerning(override_last_char, currchr, font);
         if ((int32_t)currx + (int32_t)chi.xoffset < 0)
             currx -= chi.xoffset;
 #if (VERBOSE > 1)
@@ -982,6 +981,11 @@ glib_set_background(const uint32_t pattern) {
     background_pattern = pattern;
 }
 
+void ICACHE_FLASH_ATTR
+glib_set_font(const fnt_font new_font) {
+    font = new_font;
+    fnt_get_info(&fnt_current, font);
+}
 
 void
 glib_fb2gram(void) {
@@ -1007,6 +1011,7 @@ void ICACHE_FLASH_ATTR
 glib_init(void) {
     glib_reset();
     glib_set_anim_delay_ms(GLIB_ANIM_MIN_DELAY_MS);
+    glib_set_font(0);
     glib_set_textbox(NULL);
     glib_clear_tb_txt_state();
     glib_set_mode(GLIB_DM_TEXT);

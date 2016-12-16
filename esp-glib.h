@@ -7,6 +7,7 @@
 
 #include "stdint.h"
 #include "user_config.h"
+#include "../resource/fonts.h"
 
 #ifndef VERBOSE
     #define VERBOSE 0
@@ -341,6 +342,13 @@ glib_set_mode(const glib_draw_mode dm);
  */
 void
 glib_set_background(const uint32_t pattern);  // TODO: test
+
+/**
+ * @brief glib_set_font
+ * @param font
+ */
+void
+glib_set_font(const fnt_font new_font);
 
 /**
  * @brief glib_set_anim_delay_ms
