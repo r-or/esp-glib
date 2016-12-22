@@ -8,6 +8,7 @@ Included are right now:
 * Font-renderer with 
   * textbox support
   * line-break on words
+  * multiple fonts / sizes
   * backspace support
   * UTF-8 support (escape with 'u+xxxx' or 'U+xxxxxxxx')...
   
@@ -25,14 +26,17 @@ glib_init();
 glib_clear_fb(GLIB_OS_ALL);         // clear everything in framebuffer
 glib_set_textbox(NULL);             // set current textbox to whole screen
 glib_clear_tb_txt_state();          // clear current text positioning information
+glib_set_font(A_FONT_YOU_CONVERTED) // select font (as well as font size)
 glib_set_mode(GLIB_DM_FREE);        // set draw mode to free mode
-glib_print("ESP8266 here!",         // latin1-encoded, zero-terminated uint8_t array
+glib_print("ESP8266 here!",         // zero-terminated uint8_t array; utf8 escape: u+xxxxlatin1-encoded, 
            0,                       // x-coordinate (origin: top left)
-           _FONT_MAX_CHAR_ASCENT_,  // y-coordinate (char origin: baseline *)
-           (glib_draw_args)(GLIB_DA_CENTER_Y | GLIB_DA_CENTER_X),   
-                                    // draw arguments: center horizontically & vertically
-           NULL,                    // returns coordinates of end of string
-           NULL);
+           0,                       // y-coordinate (char origin: baseline *)
+           GLIB_TP_TOPMOST | GLIB_TP_CENTER_X, /* glib_txt_position: 
+                                       auto handle y coordinate & center horizontically*/
+           GLIB_DA_NONE,            /* glib_draw_args: mainly for drawing bitmaps
+                                       (e.g. flip, invert, switch endianness...) */
+           NULL,                    
+           NULL);                   // returns coordinates of end of string
            
 glib_fb2gram();                     // push framebuffer to display graphics RAM (slow)
 
