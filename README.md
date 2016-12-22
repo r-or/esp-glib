@@ -28,7 +28,7 @@ glib_set_textbox(NULL);             // set current textbox to whole screen
 glib_clear_tb_txt_state();          // clear current text positioning information
 glib_set_font(A_FONT_YOU_CONVERTED) // select font (as well as font size)
 glib_set_mode(GLIB_DM_FREE);        // set draw mode to free mode
-glib_print("ESP8266 here!",         // zero-terminated uint8_t array; utf8 escape: u+xxxxlatin1-encoded, 
+glib_print("ESP8266 here!",         // zero-terminated uint8_t array; utf8 escape: u+xxxx
            0,                       // x-coordinate (origin: top left)
            0,                       // y-coordinate (char origin: baseline *)
            GLIB_TP_TOPMOST | GLIB_TP_CENTER_X, /* glib_txt_position: 
