@@ -22,7 +22,7 @@
 
 static uint32_t volatile framebuffer[GLIB_FBSIZE_INT32] = {0};       // [64][32], row addr x col addr/2 -> 64 x 64*4
 static uint32_t background_pattern = 0;
-static fnt_font font;
+static fnt_id font;
 
 static const struct glib_window region_full = {
     .x_left = GLIB_DISP_COL_LOWER,
@@ -454,7 +454,9 @@ utf8_unescape(const uint8_t *string, uint32_t *const target) {
             *target += hex2int(string[2 + curr_utfpos]) * exp;
             exp *= 0x10;
         }
+#if (VERBOSE > 1)
         os_printf("unescaped utf8: U+%x\n", *target);
+#endif
         return 2 + utflen;
     }
 
@@ -467,8 +469,8 @@ static uint8_t strbuf[GLIB_MAX_CHARS * 2] = {0};
 static uint32_t strbuf32[GLIB_MAX_CHARS] = {0};
 
 uint8_t ICACHE_FLASH_ATTR
-glib_print(const uint8_t *string, const uint16_t x_l, const uint16_t y_asc,
-                                     const glib_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re) {
+glib_print(const uint8_t *string, const uint16_t x_l, const uint16_t y_asc, const glib_txt_position txtpos,
+           const glib_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re) {
 #if (VERBOSE > 1)
     os_printf("print: '%s'\n", string);
 #endif
@@ -485,9 +487,8 @@ glib_print(const uint8_t *string, const uint16_t x_l, const uint16_t y_asc,
     uint16_t chr_fb_idx = 0;
     for (chr_idx = 0; strbuf[chr_idx] != '\0'; ++chr_idx, ++chr_fb_idx)
         chr_idx += utf8_unescape(&strbuf[chr_idx], &strbuf32[chr_fb_idx]);
-    strbuf32[chr_idx] = '\0';
-
-    return glib_print_utf8(strbuf32, x_l, y_asc, args, x_l_re, y_asc_re);
+    strbuf32[chr_fb_idx] = '\0'; // terminate with zero
+    return glib_print_utf8(strbuf32, x_l, y_asc, txtpos, args, x_l_re, y_asc_re);
 }
 
 /* TODO
@@ -506,12 +507,22 @@ string_preproc_utf8(const uint32_t *utf8string) {
 */
 
 uint8_t ICACHE_FLASH_ATTR
-glib_print_utf8(const uint32_t *utf8string, const uint16_t x_l, const uint16_t y_asc,
-                                          const glib_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re) {
+glib_print_utf8(const uint32_t *utf8string, const uint16_t x_l, const uint16_t y_asc, const glib_txt_position txtpos,
+                const glib_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re) {
     uint16_t chr_idx;
     uint16_t currx, curry;
     uint16_t x_l_tb = x_l + textbox.x_left;
-    uint16_t y_asc_tb = y_asc + textbox.y_top;      // x, y corrected by textbox offsets
+    uint16_t y_asc_tb;      // x, y corrected by textbox offsets
+    if (!(txtpos & GLIB_TP_APPEND) && y_asc - fnt_current.max_char_ascent < 0) {
+        if (txtpos & GLIB_TP_TOPMOST) {
+            y_asc_tb = textbox.y_top + fnt_current.max_char_ascent;
+        } else {
+            os_printf("glib_print: not enough top space for text to fit!\n");
+            return 1;
+        }
+    } else {
+        y_asc_tb = y_asc + textbox.y_top;
+    }
     struct fnt_char_info chi;
     uint32_t override_last_char = (txt_drawmode != GLIB_DM_FREE) ? *chars_in_fb.last_char : 0;
     uint8_t line_force_tag = 0;
@@ -574,7 +585,6 @@ glib_print_utf8(const uint32_t *utf8string, const uint16_t x_l, const uint16_t y
                     uint8_t maxcharsperline = (textbox.x_right - textbox.x_left) / fnt_current.max_char_width;
                     if (chars_in_fb.last_char > chars_in_fb.last_word
                             && chars_in_fb.last_char - chars_in_fb.last_word < maxcharsperline) {
-                        os_printf("lastchar: %08x; lastword: %08x; max: %d\n", chars_in_fb.last_char, chars_in_fb.last_word, maxcharsperline);
                         // replace this ' ' with '\n' and rewind
                         ++chars_in_fb.last_char;
                         *chars_in_fb.last_char = 0; // rewind until now
@@ -584,7 +594,7 @@ glib_print_utf8(const uint32_t *utf8string, const uint16_t x_l, const uint16_t y
                         currx = x_l_tb;
                         curry = y_asc_tb;
 
-                        glib_print_utf8(&(chars_in_fb.chars[1]), x_l_tb, y_asc_tb, args, &currx, &curry);
+                        glib_print_utf8(&(chars_in_fb.chars[1]), x_l_tb, y_asc_tb, txtpos, args, &currx, &curry);
                     } else {
                         override_last_char = 0;
                         curry += fnt_current.height;
@@ -622,11 +632,11 @@ glib_print_utf8(const uint32_t *utf8string, const uint16_t x_l, const uint16_t y
                 // print history without last char(s); return new positions
                 // NOTE: not really recursive, as it will probably only get called once...
                 //       exluding stuff like "a\bb\bc\bd" etc <- but who does that?!
-                glib_print_utf8(&(chars_in_fb.chars[1]), x_l_tb, y_asc_tb, args, &currx, &curry);
+                glib_print_utf8(&(chars_in_fb.chars[1]), x_l_tb, y_asc_tb, txtpos, args, &currx, &curry);
 
                 if (line_force_tag && currx + 3 * dotinfo.advance <= textbox.x_right) {
                     // '...' fits
-                    glib_print((uint8_t *)"...", x_l_tb, y_asc_tb, args, NULL, NULL);
+                    glib_print((uint8_t *)"...", x_l_tb, y_asc_tb, txtpos, args, NULL, NULL);
 #if (VERBOSE > 1)
                     os_printf("print: skipping done!\n");
 #endif
@@ -717,12 +727,12 @@ glib_print_utf8(const uint32_t *utf8string, const uint16_t x_l, const uint16_t y
 
     if (txt_drawmode == GLIB_DM_FREE) {  // TODO: enable for recursive functionality
         int16_t trans_x = 0, trans_y = 0;
-        if (args & GLIB_DA_CENTER_X) {
+        if (txtpos & GLIB_TP_CENTER_X) {
             uint8_t string_width = string_max_extent.x_right - string_max_extent.x_left;
             uint8_t tb_width = textbox.x_right - textbox.x_left;
             trans_x = (tb_width - string_width) / 2;
         }
-        if (args & GLIB_DA_CENTER_Y) {
+        if (txtpos & GLIB_TP_CENTER_Y) {
             uint8_t string_height = string_max_extent.y_bottom - string_max_extent.y_top;
             uint8_t tb_heigth = textbox.y_bottom - textbox.y_top;
             trans_y = (tb_heigth - string_height) / 2 - (string_max_extent.y_top - textbox.y_top);
@@ -982,7 +992,7 @@ glib_set_background(const uint32_t pattern) {
 }
 
 void ICACHE_FLASH_ATTR
-glib_set_font(const fnt_font new_font) {
+glib_set_font(const fnt_id new_font) {
     font = new_font;
     fnt_get_info(&fnt_current, font);
 }

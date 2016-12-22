@@ -3,12 +3,13 @@
 import sys
 from xml.dom import minidom
 import png
-import pprint
 from array import array
 from matplotlib import pyplot as plt
 import numpy as np
 import math
 import struct
+import copy
+
 
 
 # CLASSES
@@ -36,7 +37,6 @@ class BmpStack:
         
     #   quantise(
     #       ndarray(image),
-    #       int(imageDepth),
     #       int(targetDepth))
     def quantise(self, imgarray, depth):
         return np.array([int(round(k / \
@@ -71,6 +71,7 @@ class BmpStack:
         
     #   saveimg(
     #       ndarray(image),
+    #       int(tarWordLength)
     #       bool(lendian),
     #       str(name))
     def saveimg(self, imgarray, twlen, littleendian, outname):        # TODO: endianness
@@ -206,7 +207,7 @@ class BmpStack:
         self.create_meta('assets', onflash)
         
         
-    
+        
 class FontStack(BmpStack):
     def __init__(self, bitmaps, xmls, targetDepth, targetWordLength, byteAlign):
         super(FontStack, self).__init__(bitmaps, targetDepth, targetWordLength, byteAlign)
@@ -250,13 +251,13 @@ class FontStack(BmpStack):
     def extractChars(self, showChars):
         lfntpos = 0        
         fntMetricBase = {
-            'maxfontlen': 0,
-            'maxfontwidth': 0,
-            'minfontwidth': 9999999,
-            'maxfontheight': 0,
-            'maxfontascent': 0
+            'maxcharlen': 0,
+            'maxcharwidth': 0,
+            'mincharwidth': 9999999,
+            'maxcharheight': 0,
+            'maxcharascent': 0
             }
-        self.fontMetrics = fntMetricBase
+        self.fontMetrics = copy.deepcopy(fntMetricBase)
         for cfont, gspixels, bmpdim in zip(self.fontmap, self.lbmpFinal, self.dims):
             self.fontInfo[cfont[0]] = {}
             doc = minidom.parse(cfont[1])            
@@ -271,8 +272,9 @@ class FontStack(BmpStack):
                                               '_' + fmets.attributes['ascender'].value
             chars = doc.getElementsByTagName('char')
             self.fontInfo[cfont[0]]['chars'] = []
+            self.fontInfo[cfont[0]]['metricUnion'] = {}
             chaddresses = []
-            fntMetric = fntMetricBase            
+            fntMetric = copy.deepcopy(fntMetricBase)
             chInfo = []
 
             for char in chars:
@@ -316,28 +318,28 @@ class FontStack(BmpStack):
                 chInfo[-1]['len'] = len(subimagebytearr)
                 
                 # local max
-                if len(subimagebytearr) > fntMetric['maxfontlen']:
-                    fntMetric['maxfontlen'] = len(subimagebytearr)
-                if chw > fntMetric['maxfontwidth']:
-                    fntMetric['maxfontwidth'] = chw
-                if chadv < fntMetric['minfontwidth']:
-                    fntMetric['minfontwidth'] = chadv;
-                if chh > fntMetric['maxfontheight']:
-                    fntMetric['maxfontheight'] = chh
-                if chyoff > fntMetric['maxfontascent']:
-                    fntMetric['maxfontascent'] = chyoff
+                if len(subimagebytearr) > fntMetric['maxcharlen']:
+                    fntMetric['maxcharlen'] = len(subimagebytearr)
+                if chw > fntMetric['maxcharwidth']:
+                    fntMetric['maxcharwidth'] = chw
+                if chadv < fntMetric['mincharwidth']:
+                    fntMetric['mincharwidth'] = chadv;
+                if chh > fntMetric['maxcharheight']:
+                    fntMetric['maxcharheight'] = chh
+                if chyoff > fntMetric['maxcharascent']:
+                    fntMetric['maxcharascent'] = chyoff
                     
                 # global max
-                if len(subimagebytearr) > self.fontMetrics['maxfontlen']:
-                    self.fontMetrics['maxfontlen'] = len(subimagebytearr)
-                if chw > self.fontMetrics['maxfontwidth']:
-                    self.fontMetrics['maxfontwidth'] = chw
-                if chadv < self.fontMetrics['minfontwidth']:
-                    self.fontMetrics['minfontwidth'] = chadv;
-                if chh > self.fontMetrics['maxfontheight']:
-                    self.fontMetrics['maxfontheight'] = chh
-                if chyoff > self.fontMetrics['maxfontascent']:
-                    self.fontMetrics['maxfontascent'] = chyoff
+                if len(subimagebytearr) > self.fontMetrics['maxcharlen']:
+                    self.fontMetrics['maxcharlen'] = len(subimagebytearr)
+                if chw > self.fontMetrics['maxcharwidth']:
+                    self.fontMetrics['maxcharwidth'] = chw
+                if chadv < self.fontMetrics['mincharwidth']:
+                    self.fontMetrics['mincharwidth'] = chadv;
+                if chh > self.fontMetrics['maxcharheight']:
+                    self.fontMetrics['maxcharheight'] = chh
+                if chyoff > self.fontMetrics['maxcharascent']:
+                    self.fontMetrics['maxcharascent'] = chyoff
                     
                     
                 # kerning
@@ -350,8 +352,8 @@ class FontStack(BmpStack):
                     lkern = sorted(lkern, key=lambda x: x[1])
                 chInfo[-1]['kerning'] = lkern
             
-            self.fontInfo[cfont[0]]['chars'] = chInfo
-            self.fontInfo[cfont[0]]['metricUnion'] = fntMetric
+            self.fontInfo[cfont[0]]['chars'] = list(chInfo)
+            self.fontInfo[cfont[0]]['metricUnion'] = copy.deepcopy(fntMetric)
             self.fontInfo[cfont[0]]['fntlen'] = len(self.bytearr) - lfntpos
             lfntpos = len(self.bytearr)
             
@@ -390,15 +392,15 @@ class FontStack(BmpStack):
             'typedef enum {\n'
             
         chbody = \
-            'uint8_t{}\n{}_get_char(struct {}_char_info *const ch_info, const uint32_t ch, const {}_font fnt) {{\n' \
+            'uint8_t{}\n{}_get_char(struct {}_char_info *const ch_info, const uint32_t ch, const {}_id fnt) {{\n' \
             '    switch(fnt) {{\n'.format('' if not storeonflash else ' ICACHE_FLASH_ATTR', self.prefix, self.prefix, self.prefix)
             
         kernbody = \
-            'int8_t{}\n{}_get_kerning(const uint32_t ch1, const uint32_t ch2, const {}_font fnt) {{\n' \
+            'int8_t{}\n{}_get_kerning(const uint32_t ch1, const uint32_t ch2, const {}_id fnt) {{\n' \
             '    switch(fnt) {{\n'.format('' if not storeonflash else ' ICACHE_FLASH_ATTR', self.prefix, self.prefix)
             
         fntbody = \
-            'uint8_t{} \n{}_get_info(struct {}_info *const finfo, const {}_font fnt) {{\n' \
+            'uint8_t{} \n{}_get_info(struct {}_info *const finfo, const {}_id fnt) {{\n' \
             '    switch(fnt) {{\n'.format('' if not storeonflash else ' ICACHE_FLASH_ATTR', self.prefix, self.prefix, self.prefix)
                         
         for cfname, cfont in self.fontInfo.items():
@@ -415,8 +417,7 @@ class FontStack(BmpStack):
             fntbody += \
                  '    case {}_{}:\n'.format(self.prefix.upper(), cfname.upper())
                 
-#            pp = pprint.PrettyPrinter(indent=4)
-#            pp.pprint(cfont)
+            
             for char in cfont['chars']:
                 chx = int(char['ch'].attributes['rect'].value.split()[0])
                 chy = int(char['ch'].attributes['rect'].value.split()[1])
@@ -492,9 +493,9 @@ class FontStack(BmpStack):
                 '            .max_char_ascent = {},\n' \
                 '        }}; break;\n'.format(self.prefix, cfont['fntlen'], self.tdepth, cfont['name'], \
                     cfont['metrics'].attributes['height'].value, cfont['metrics'].attributes['ascender'].value, \
-                    cfont['metricUnion']['maxfontlen'], math.ceil(cfont['metricUnion']['maxfontlen'] / 4), \
-                    cfont['metricUnion']['maxfontheight'], cfont['metricUnion']['maxfontwidth'], \
-                    cfont['metricUnion']['minfontwidth'], cfont['metricUnion']['maxfontascent'])    
+                    cfont['metricUnion']['maxcharlen'], math.ceil(cfont['metricUnion']['maxcharlen'] / 4), \
+                    cfont['metricUnion']['maxcharheight'], cfont['metricUnion']['maxcharwidth'], \
+                    cfont['metricUnion']['mincharwidth'], cfont['metricUnion']['maxcharascent'])
                                                    
         chbody += \
             '    default: return 1;\n' \
@@ -515,11 +516,27 @@ class FontStack(BmpStack):
             '}\n\n'
                 
         declares += \
-            '}} {}_font;\n\n' \
-            'uint8_t\n{}_get_char(struct {}_char_info *const ch_info, const uint32_t ch, const {}_font fnt);\n\n' \
-            'int8_t\n{}_get_kerning(const uint32_t ch1, const uint32_t ch2, const {}_font fnt);\n\n' \
-            'uint8_t\n{}_get_info(struct {}_info *const finfo, const {}_font fnt);\n\n'.format( \
-                self.prefix, self.prefix, self.prefix, self.prefix, self.prefix, \
+            '}} {}_id;\n\n'.format(self.prefix)
+            
+        declares += \
+            '/**\n' \
+            ' * @brief {}_get_char retrieve character information of ch\n' \
+            ' */\n' \
+            'uint8_t\n{}_get_char(struct {}_char_info *const ch_info, const uint32_t ch, const {}_id fnt);\n\n'.format( \
+                self.prefix, self.prefix, self.prefix, self.prefix)
+                
+        declares += \
+            '/**\n' \
+            ' * @brief {}_get_kerning retrieve kerning information of ch2 with relation to ch1\n' \
+            ' */\n' \
+            'int8_t\n{}_get_kerning(const uint32_t ch1, const uint32_t ch2, const {}_id fnt);\n\n'.format( \
+                self.prefix, self.prefix, self.prefix)
+        
+        declares += \
+            '/**\n' \
+            ' * @brief {}_get_info retrieve general font information\n' \
+            ' */\n' \
+            'uint8_t\n{}_get_info(struct {}_info *const finfo, const {}_id fnt);\n\n'.format( \
                 self.prefix, self.prefix, self.prefix, self.prefix)
                 
                 
@@ -534,12 +551,12 @@ class FontStack(BmpStack):
             '#define {}_MAX_CHAR_HEIGHT     \t{}\t// pix\n' \
             '#define {}_MIN_CHAR_WIDTH      \t{}\t// useful for worst case num of printable chars (min advance)\n' \
             '#define {}_MAX_CHAR_ASCENT     \t{}\t// max char height with respect to base line (for cursor placement)\n' \
-            '\n'.format(self.prefix.upper(), self.fontMetrics['maxfontlen'], \
-                self.prefix.upper(), math.ceil(self.fontMetrics['maxfontlen'] / 4), \
-                self.prefix.upper(), self.fontMetrics['maxfontwidth'], \
-                self.prefix.upper(), self.fontMetrics['maxfontheight'], \
-                self.prefix.upper(), self.fontMetrics['minfontwidth'], \
-                self.prefix.upper(), self.fontMetrics['maxfontascent'])
+            '\n'.format(self.prefix.upper(), self.fontMetrics['maxcharlen'], \
+                self.prefix.upper(), math.ceil(self.fontMetrics['maxcharlen'] / 4), \
+                self.prefix.upper(), self.fontMetrics['maxcharwidth'], \
+                self.prefix.upper(), self.fontMetrics['maxcharheight'], \
+                self.prefix.upper(), self.fontMetrics['mincharwidth'], \
+                self.prefix.upper(), self.fontMetrics['maxcharascent'])
 
 
         out = open(outname + '.h', 'w')
@@ -561,9 +578,9 @@ class FontStack(BmpStack):
         self.read(showBmp)
         self.extractChars(showFnt)
         self.finalise(lendian, 'fonts')
-        self.create_meta('fonts', onflash)
         
-    
+        self.create_meta('fonts', onflash)
+            
 
 
 # GLOBAL FUNCTIONS
@@ -591,7 +608,7 @@ def printHelp():
         
 
 
-# MAIN
+# ENTRY
 
 fxml = []
 fpng = []

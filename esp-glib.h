@@ -118,17 +118,21 @@ typedef enum {
 } glib_anim_direction;
 
 typedef enum {
-    GLIB_DA_NONE     = 0x00,
-    GLIB_DA_FLIPLR   = 0x01,     // flip bitmap horizontically; NOT read-only
-    GLIB_DA_FLIPTB   = 0x02,     // flip bitmap vertically; read-only
-    GLIB_DA_INVERT   = 0x04,     // NOT read-only
-    GLIB_DA_SWENDIAN = 0x08,     // switch endianness; NOT read-only
-    // /* require GLIB_DM_FREE:
-    GLIB_DA_CENTER_Y = 0x10,     // center in textbox vertically; read-only
-    GLIB_DA_CENTER_X = 0x20,     // center in textbox horizontically; read-only
-    // */
-    GLIB_DA_CLR      = 0x40      // clear pixels; supply (single) uint32_t * to a clear value
+    GLIB_DA_NONE        = 0x00,
+    GLIB_DA_FLIPLR      = 0x01,     // flip bitmap horizontically; NOT read-only
+    GLIB_DA_FLIPTB      = 0x02,     // flip bitmap vertically; read-only
+    GLIB_DA_INVERT      = 0x04,     // NOT read-only
+    GLIB_DA_SWENDIAN    = 0x08,     // switch endianness; NOT read-only
+    GLIB_DA_CLR         = 0x40      // clear pixels; supply (single) uint32_t * to a clear value
 } glib_draw_args;
+
+typedef enum {
+    GLIB_TP_NONE        = 0x00,
+    GLIB_TP_TOPMOST     = 0x01,     // only considered if y value too low for text to fit
+    GLIB_TP_APPEND      = 0x02,
+    GLIB_TP_CENTER_Y    = 0x10,     // center in textbox vertically
+    GLIB_TP_CENTER_X    = 0x20,     // center in textbox horizontically
+} glib_txt_position;
 
 
 /***********************************************
@@ -286,7 +290,7 @@ glib_translate(const struct glib_window *const region, const int16_t x, const in
  * @return zero if nothing had to be skipped
  */
 uint8_t
-glib_print(const uint8_t* string, const uint16_t x_l, const uint16_t y_asc,
+glib_print(const uint8_t* string, const uint16_t x_l, const uint16_t y_asc, const glib_txt_position txtpos,
            const glib_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re);
 
 /**
@@ -305,7 +309,7 @@ glib_print(const uint8_t* string, const uint16_t x_l, const uint16_t y_asc,
  * @return
  */
 uint8_t
-glib_print_utf8(const uint32_t* utf8string, const uint16_t x_l, const uint16_t y_asc,
+glib_print_utf8(const uint32_t* utf8string, const uint16_t x_l, const uint16_t y_asc, const glib_txt_position txtpos,
                 const glib_draw_args args, uint16_t *x_l_re, uint16_t *y_asc_re);
 
 /**
@@ -348,7 +352,7 @@ glib_set_background(const uint32_t pattern);  // TODO: test
  * @param font
  */
 void
-glib_set_font(const fnt_font new_font);
+glib_set_font(const fnt_id new_font);
 
 /**
  * @brief glib_set_anim_delay_ms
