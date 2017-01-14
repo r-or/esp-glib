@@ -160,6 +160,7 @@ ssd1322_send_command_list(const uint8_t *const cmd_list, const uint8_t list_len)
 #ifndef SSD1322_MODE
 #define SSD1322_MODE          256*64
 #define SSD1322_PIXDEPTH        4
+#define SSD1322_COLORS          16
 #define SSD1322_COL_SEG_START   0x1C    // 28
 #define SSD1322_COL_SEG_END     0x5B    // 91
 #define SSD1322_ROW_START       0x00    // 0

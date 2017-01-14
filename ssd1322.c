@@ -533,7 +533,7 @@ glib_setpix(uint32_t *const seg, uint8_t id, const uint8_t value) {
     *seg |= (uint32_t)value << ((32 - SSD1322_PIXDEPTH) - id * SSD1322_PIXDEPTH);
 }
 
-inline uint8_t
+inline uint8_t ICACHE_FLASH_ATTR
 glib_getpix(const uint32_t* const seg, const uint8_t id) {
     return (uint8_t)((*seg << id * SSD1322_PIXDEPTH) >> (32 - SSD1322_PIXDEPTH));
 }

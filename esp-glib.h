@@ -18,7 +18,7 @@
  ***********************************************/
 
 // Animation
-#define GLIB_ANIM_MIN_DELAY_MS          33
+#define GLIB_ANIM_MIN_DELAY_MS          17
 
 
 /***********************************************
@@ -32,6 +32,7 @@
     #define GLIB_DISP_COL_UPPER         (SSD1322_SEGMENTS * 8 - 1)
     #define GLIB_DISP_ROW_LOWER         0
     #define GLIB_DISP_ROW_UPPER         (SSD1322_ROWS - 1)
+    #define GLIB_DISP_COLORS            (SSD1322_COLORS)
     #define GLIB_FBSIZE_INT32           (SSD1322_SEGMENTS * SSD1322_ROWS)
     #define GLIB_PIX_INT32              (32 / SSD1322_PIXDEPTH)
     #define GLIB_PIX_INT8               (8 / SSD1322_PIXDEPTH)
@@ -279,6 +280,16 @@ uint8_t
 glib_translate(const struct glib_window *const region, const int16_t x, const int16_t y);
 
 /**
+ * @brief glib_translate_subpix
+ * @param region
+ * @param x
+ * @param y
+ * @return
+ */
+uint8_t
+glib_translate_subpix(const struct glib_window *const region, const float x, const float y);
+
+/**
  * @brief glib_print prints a zero-terminated string relative to the origin set with glib_set_textbox(.)
  * Encoding: ASCII; UTF-8-escaping: u+xxxx or U+xxxxxxxx
  * @param string zero-terminated
@@ -366,6 +377,13 @@ glib_set_anim_delay_ms(const uint16_t delay);
  */
 void
 glib_fb2gram(void);
+
+/**
+ * @brief glib_get_full_region
+ * @return
+ */
+const struct glib_window *
+glib_get_full_region(void);
 
 /**
  * @brief glib_reset calls glib_reset_display()

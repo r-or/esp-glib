@@ -235,6 +235,336 @@ glib_translate(const struct glib_window *const region, const int16_t x, const in
     return 0;
 }
 
+inline int32_t
+round_up(const float val) {
+    return (int32_t)((double)val + 1.0);
+}
+
+inline double
+decimal(const float val) {
+    return (val < 0 ? -1.0 : 1.0) * (double)val - (double)((int32_t)val);
+}
+
+struct quad_pixmap {
+    int8_t x;
+    int8_t y;
+};
+
+struct q16 {
+    uint16_t frac;
+    int16_t scale;
+};
+
+typedef union {
+    uint16_t uintrep;
+    struct {
+        uint16_t sign   : 1,
+                 bit14  : 1,
+                 bit13  : 1,
+                 bit12  : 1,
+                 bit11  : 1,
+                 bit10  : 1,
+                 bit9   : 1,
+                 bit8   : 1,
+                 bit7   : 1,
+                 bit6   : 1,
+                 bit5   : 1,
+                 bit4   : 1,
+                 bit3   : 1,
+                 bit2   : 1,
+                 bit1   : 1,
+                 bit0   : 1;
+    } bits;
+} int16_custom;
+
+struct q15_16 {
+    int16_custom integer;
+    uint16_t frac;
+};
+
+struct q16 ICACHE_FLASH_ATTR
+decfloat2q16(const float *const val) {
+    float decval = (float)decimal(*val);
+    decval *=  (1 << 16);
+    return (struct q16) { // 'good enough' solution: doesn't actually round!
+        .frac = (uint16_t)decval,
+        .scale = -10,
+    };
+
+    int16_custom bla;
+    bla.bits.sign = 1;
+}
+
+struct q16 ICACHE_FLASH_ATTR
+int2q16(int32_t val) {
+    uint8_t neg = val < 0;
+    if (neg)
+        val *= -1;
+    int32_t msb = __builtin_clz((uint32_t)val);
+    return (struct q16) {
+        .frac = val * (1 << 16) / (1 << msb),
+        .scale = msb * (neg ? -1 : 1)
+    };
+}
+
+int16_t
+q16quantise(struct q16 val, const int16_t range) {
+    int32_t scale = (1 << 16) / range;
+    return (val.frac / scale) * val.scale;
+}
+
+struct q16
+q16mult(const struct q16 *const val1, const struct q16 *const val2) {
+    return (struct q16) {
+        .frac = val1->frac * val2->frac,
+        .scale = val1->scale * val2->scale
+    };
+}
+
+void
+q16match(struct q16 *const val1, struct q16 *const val2) {
+    if (val1->scale < val2->scale) {
+        int16_t tmp = val2->scale / val1->scale;
+        val1->scale *= tmp;
+        val1->frac *= tmp;
+    } else if (val2->scale < val1->scale) {
+        int16_t tmp = val1->scale / val2->scale;
+        val2->scale *= tmp;
+        val2->frac *= tmp;
+    }
+}
+
+struct q16
+q16add(struct q16 val1, struct q16 val2) {
+    q16match(&val1, &val2);
+    return (struct q16) {
+        .frac = val1.frac + val2.frac,
+        .scale = val1.scale,
+    };
+}
+
+struct q16
+q16sub(struct q16 val1, struct q16 val2) {
+    q16match(&val1, &val2);
+    return (struct q16) {
+        .frac = val1.frac - val2.frac,
+        .scale = val1.scale,
+    };
+}
+
+uint8_t ICACHE_FLASH_ATTR
+glib_translate_subpix(const struct glib_window *const region, const float x, const float y) {
+    uint32_t bench = system_get_time();
+#if (VERBOSE > 1)
+    os_printf("translate: region\n"
+              " .xleft: %d\n"
+              " .xright: %d\n"
+              " .ytop: %d\n"
+              " .ybottom: %d\n"
+              "by (%d|%d)\n",
+              region->x_left, region->x_right, region->y_top, region->y_bottom, x, y);
+#endif
+
+    //if (!x && !y)
+    //    return 0;
+
+    // inplace.. RAM is PRECIOUS
+    int16_t row_s, row_e, col_s, col_e;
+    int8_t row_inc, col_inc;
+
+    // calc all quarters our pixel gets mapped to
+    float mult_tl, mult_tr, mult_bl, mult_br;
+    double dec_x = decimal(x);
+    double dec_y = decimal(y);
+    int16_t int_x = (int16_t)x;
+    int16_t int_y = (int16_t)y;
+    float perm1 = (float)((1.0 - dec_y) * (1.0 - dec_x));
+    float perm2 = (float)((1.0 - dec_y) * dec_x);
+    float perm3 = (float)(dec_y * (1.0 - dec_x));
+    float perm4 = (float)(dec_y * dec_x);
+    struct quad_pixmap tl_far, tr_far, bl_far, br_far; // corners which need offset of 1
+
+    // check in which direction we can copy (PHYSICAL layout!! => top/bottom flip)
+    if (x >= 0 && y >= 0) {             // phys bottom right -> top left
+        row_s = region->y_bottom;
+        row_e = region->y_top - 1;
+        row_inc = -1;
+        col_s = region->x_right;
+        col_e = region->x_left - 1;
+        col_inc = -1;
+        mult_tl = perm1;
+        mult_tr = perm2;
+        mult_bl = perm3;
+        mult_br = perm4;
+        tl_far.x = 0; tl_far.y = 0;
+        tr_far.x = 1; tr_far.y = 0;
+        bl_far.x = 0; bl_far.y = -1;
+        br_far.x = 1; br_far.y = -1;
+    } else if (x >= 0 && y < 0) {        // tr -> bl
+        row_s = region->y_top;
+        row_e = region->y_bottom + 1;
+        row_inc = 1;
+        col_s = region->x_right;
+        col_e = region->x_left - 1;
+        col_inc = -1;
+        mult_tl = perm3;
+        mult_tr = perm4;
+        mult_bl = perm1;
+        mult_br = perm2;
+        tl_far.x = 0; tl_far.y = 1;
+        tr_far.x = 1; tr_far.y = 1;
+        bl_far.x = 0; bl_far.y = 0;
+        br_far.x = 1; br_far.y = 0;
+    } else if (x <= 0 && y >= 0) {      // bl -> tr
+        row_s = region->y_bottom;
+        row_e = region->y_top - 1;
+        row_inc = -1;
+        col_s = region->x_left;
+        col_e = region->x_right + 1;
+        col_inc = 1;
+        mult_tl = perm2;
+        mult_tr = perm1;
+        mult_bl = perm4;
+        mult_br = perm3;
+        tl_far.x = -1; tl_far.y = 0;
+        tr_far.x = 0; tr_far.y = 0;
+        bl_far.x = -1; bl_far.y = -1;
+        br_far.x = -1; br_far.y = 0;
+    } else if (x < 0 && y < 0) {        // tl -> br
+        row_s = region->y_top;
+        row_e = region->y_bottom + 1;
+        row_inc = 1;
+        col_s = region->x_left;
+        col_e = region->x_right + 1;
+        col_inc = 1;
+        mult_tl = perm4;
+        mult_tr = perm3;
+        mult_bl = perm2;
+        mult_br = perm1;
+        tl_far.x = -1; tl_far.y = 1;
+        tr_far.x = 0; tr_far.y = 1;
+        bl_far.x = -1; bl_far.y = 0;
+        br_far.x = 0; br_far.y = 0;
+    } else {
+        return 1;
+    }
+
+    struct q16 qmult_tl = decfloat2q16(&mult_tl);
+    struct q16 qmult_tr = decfloat2q16(&mult_tr);
+    struct q16 qmult_bl = decfloat2q16(&mult_bl);
+    struct q16 qmult_br = decfloat2q16(&mult_br);
+
+    // tag 4 update
+    struct glib_window upd_region;
+    upd_region.x_left = (x >= 0) ? region->x_left : region->x_left + (int16_t)round_up(x);
+    upd_region.x_right = (x >= 0) ? region->x_right + (int16_t)round_up(x) : region->x_right;
+    upd_region.y_top = (y >= 0) ? region->y_top : region->y_top + (int16_t)round_up(y);
+    upd_region.y_bottom = (y >= 0) ? region->y_bottom + (int16_t)round_up(y) : region->y_bottom;
+#if (VERBOSE > 1)
+    os_printf("translate: update_region\n"
+              " .xleft: %d\n"
+              " .xright: %d\n"
+              " .ytop: %d\n"
+              " .ybottom: %d\n",
+              upd_region.x_left, upd_region.x_right, upd_region.y_top, upd_region.y_bottom);
+#endif
+    region_prune(&upd_region);
+#if (VERBOSE > 1)
+    os_printf("translate: pruned update_region\n"
+              " .xleft: %d\n"
+              " .xright: %d\n"
+              " .ytop: %d\n"
+              " .ybottom: %d\n",
+              upd_region.x_left, upd_region.x_right, upd_region.y_top, upd_region.y_bottom);
+#endif
+    glib_tag_upd_reg_log(&upd_region);
+    // addresses of read / write segments:
+    uint32_t *cbufr;
+    uint32_t *cbufw_tl, *cbufw_tr, *cbufw_bl, *cbufw_br;
+    // ID of pixel to be read and to be written
+    uint8_t segr_pixid;
+    uint8_t segw_pixid_l, segw_pixid_r;
+    int16_t crow, ccol;
+
+//    os_printf("dump before:\n");
+//    dbg_dump_fb(&region_full);
+
+
+    os_printf("subpix translation setup: %luus\n", system_get_time() - bench);
+    bench = system_get_time();
+
+    crow = row_s;
+    for (crow = row_s; crow != row_e; crow += row_inc) {
+        if (crow + int_y < 0 || crow + int_y > GLIB_DISP_ROW_UPPER) { // out of y boundary
+#if (VERBOSE > 2)
+            os_printf("transl: skip row %d\n", crow + y);
+#endif
+            continue;
+        }
+        for (ccol = col_s; ccol != col_e; ccol += col_inc) {
+            segr_pixid = ccol % GLIB_PIX_INT32;
+            // choose segment id of left pixels and right pixels affected
+            segw_pixid_l = (ccol + int_x - (x > 0 ? 0 : 1)) % GLIB_PIX_INT32;
+            segw_pixid_r = (segw_pixid_l + 1) % GLIB_PIX_INT32;
+            if (ccol + int_x < 0 || ccol + int_x > GLIB_DISP_COL_UPPER) { // out of x boundary
+#if (VERBOSE > 2)
+                os_printf("transl: skip col %d\n", ccol + x);
+#endif
+                continue;
+            }
+            cbufr = (uint32_t *)framebuffer
+                    + GLIB_DISP_COLS_INT32 * glib_row_log2phys(crow) + glib_col_log2phys(ccol) / GLIB_PIX_INT32;
+            if (*cbufr == 0) // qick & dirty speedup
+                continue;
+
+            cbufw_tl = (uint32_t *)framebuffer
+                    + GLIB_DISP_COLS_INT32 * glib_row_log2phys(crow + int_y + tl_far.y)
+                    + glib_col_log2phys(ccol + int_x + tl_far.x) / GLIB_PIX_INT32;
+            cbufw_tr = (uint32_t *)framebuffer
+                    + GLIB_DISP_COLS_INT32 * glib_row_log2phys(crow + int_y + tr_far.y)
+                    + glib_col_log2phys(ccol + int_x + tr_far.x) / GLIB_PIX_INT32;
+            cbufw_bl = (uint32_t *)framebuffer
+                    + GLIB_DISP_COLS_INT32 * glib_row_log2phys(crow + int_y + bl_far.y)
+                    + glib_col_log2phys(ccol + int_x + bl_far.x) / GLIB_PIX_INT32;
+            cbufw_br = (uint32_t *)framebuffer
+                    + GLIB_DISP_COLS_INT32 * glib_row_log2phys(crow + int_y + br_far.y)
+                    + glib_col_log2phys(ccol + int_x + br_far.x) / GLIB_PIX_INT32;
+
+
+            uint8_t oldval; // to make accumulation possible -> only overwrite 'master' pixel
+            if (ccol + int_x + tl_far.x >= 0 && ccol + int_x + tl_far.x <= GLIB_DISP_COL_UPPER
+                    && crow + int_y + tl_far.y >= 0 && crow + int_y + tl_far.y<= GLIB_DISP_ROW_UPPER) {
+                oldval = (tl_far.x == 0 && tl_far.y == 0) ? 0 : glib_getpix(cbufw_tl, segw_pixid_l);
+                glib_setpix(cbufw_tl, segw_pixid_l, (uint8_t)(glib_getpix(cbufr, segr_pixid) * mult_tl + oldval));
+            }
+            if (ccol + int_x + tr_far.x >= 0 && ccol + int_x + tr_far.x <= GLIB_DISP_COL_UPPER
+                    && crow + int_y + tr_far.y >= 0 && crow + int_y + tr_far.y<= GLIB_DISP_ROW_UPPER) {
+                oldval = (tr_far.x == 0 && tr_far.y == 0) ? 0 : glib_getpix(cbufw_tr, segw_pixid_r);
+                glib_setpix(cbufw_tr, segw_pixid_r, (uint8_t)(glib_getpix(cbufr, segr_pixid) * mult_tr + oldval));
+            }
+            if (ccol + int_x + bl_far.x >= 0 && ccol + int_x + bl_far.x <= GLIB_DISP_COL_UPPER
+                    && crow + int_y + bl_far.y >= 0 && crow + int_y + bl_far.y<= GLIB_DISP_ROW_UPPER) {
+                oldval = (bl_far.x == 0 && bl_far.y == 0) ? 0 : glib_getpix(cbufw_bl, segw_pixid_l);
+                glib_setpix(cbufw_bl, segw_pixid_l, (uint8_t)(glib_getpix(cbufr, segr_pixid) * mult_bl + oldval));
+            }
+            if (ccol + int_x + br_far.x >= 0 && ccol + int_x + br_far.x <= GLIB_DISP_COL_UPPER
+                    && crow + int_y + br_far.y >= 0 && crow + int_y + br_far.y<= GLIB_DISP_ROW_UPPER) {
+                oldval = (br_far.x == 0 && br_far.y == 0) ? 0 : glib_getpix(cbufw_br, segw_pixid_r);
+                glib_setpix(cbufw_br, segw_pixid_r, (uint8_t)(glib_getpix(cbufr, segr_pixid) * mult_br + oldval));
+            }
+            if (cbufr != cbufw_bl && cbufr != cbufw_br && cbufr != cbufw_tl && cbufr != cbufw_tr)
+                glib_setpix(cbufr, segr_pixid, 0);                           // clear source
+        }
+    }
+    os_printf("subpix translation loop: %luus\n", system_get_time() - bench);
+//    os_printf("dump after:\n");
+//    dbg_dump_fb(&region_full);
+#if (VERBOSE > 1)
+    system_soft_wdt_feed();
+#endif
+
+    return 0;
+}
 
 void ICACHE_FLASH_ATTR
 glib_draw_rect(const struct glib_window *const border, const uint32_t pattern) {
@@ -995,6 +1325,11 @@ void ICACHE_FLASH_ATTR
 glib_set_font(const fnt_id new_font) {
     font = new_font;
     fnt_get_info(&fnt_current, font);
+}
+
+const struct glib_window * ICACHE_FLASH_ATTR
+glib_get_full_region(void) {
+    return &region_full;
 }
 
 void
