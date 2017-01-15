@@ -237,11 +237,11 @@ glib_translate(const struct glib_window *const region, const int16_t x, const in
 
 
 void ICACHE_FLASH_ATTR
-glib_draw_rect(const struct glib_window *const border, const uint32_t pattern) {
+glib_draw_rect(const struct glib_window *const border, const uint32_t pattern, const uint8_t fill) {
     uint16_t height = border->y_bottom - border->y_top;
     uint16_t width = border->x_right - border->x_left;
-    uint16_t size = (width > height) ?
-                (width + GLIB_PIX_INT32 - 1) / GLIB_PIX_INT32 : (height + GLIB_PIX_INT32 - 1) / GLIB_PIX_INT32;
+    uint16_t size = (width > height) ? (width + GLIB_PIX_INT32 - 1) / GLIB_PIX_INT32 :
+                                       (height + GLIB_PIX_INT32 - 1) / GLIB_PIX_INT32;
 
     uint32_t *const temp = (uint32_t *)os_malloc(size * sizeof(uint32_t));
     uint16_t cidx;
@@ -249,6 +249,7 @@ glib_draw_rect(const struct glib_window *const border, const uint32_t pattern) {
         temp[cidx] = pattern;
 
 #if (VERBOSE > 1)
+    system_soft_wdt_feed();
     os_printf("draw_rect:\n"
               " .ybottom: %d\n"
               " .ytop: %d\n"
@@ -257,13 +258,23 @@ glib_draw_rect(const struct glib_window *const border, const uint32_t pattern) {
               border->y_bottom, border->y_top, border->x_right, border->x_left);
 #endif
 
-    // top & bottom
-    glib_draw((uint32_t *)framebuffer, border->x_left, border->y_top, temp, 1, width, GLIB_DA_NONE);
-    glib_draw((uint32_t *)framebuffer, border->x_left, border->y_bottom, temp, 1, width, GLIB_DA_NONE);
+    if (fill) {
+        if (width > height) {
+            for (cidx = 0; cidx < height; ++cidx)
+                glib_draw((uint32_t *)framebuffer, border->x_left, border->y_top + cidx, temp, 1, width, GLIB_DA_NONE);
+        } else {
+            for (cidx = 0; cidx < width; ++cidx)
+                glib_draw((uint32_t *)framebuffer, border->x_left + cidx, border->y_top, temp, height, 1, GLIB_DA_NONE);
+        }
+    } else {
+        // top & bottom
+        glib_draw((uint32_t *)framebuffer, border->x_left, border->y_top, temp, 1, width, GLIB_DA_NONE);
+        glib_draw((uint32_t *)framebuffer, border->x_left, border->y_bottom, temp, 1, width, GLIB_DA_NONE);
 
-    // left & right
-    glib_draw((uint32_t *)framebuffer, border->x_left, border->y_top, temp, height, 1, GLIB_DA_NONE);
-    glib_draw((uint32_t *)framebuffer, border->x_right, border->y_top, temp, height, 1, GLIB_DA_NONE);
+        // left & right
+        glib_draw((uint32_t *)framebuffer, border->x_left, border->y_top, temp, height, 1, GLIB_DA_NONE);
+        glib_draw((uint32_t *)framebuffer, border->x_right, border->y_top, temp, height, 1, GLIB_DA_NONE);
+    }
 
     os_free(temp);
 }

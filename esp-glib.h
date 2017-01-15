@@ -228,7 +228,7 @@ glib_clear_disp_fadeout_anim(const uint32_t bg_col, const uint16_t hold_frames, 
  * @param pattern color/pattern of frame
  */
 void
-glib_draw_rect(const struct glib_window *const border, const uint32_t pattern);
+glib_draw_rect(const struct glib_window *const border, const uint32_t pattern, const uint8_t fill);
 
 /**
  * @brief glib_draw_bitmap see glib_draw(.)
