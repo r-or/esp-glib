@@ -237,6 +237,39 @@ glib_translate(const struct glib_window *const region, const int16_t x, const in
 
 
 void ICACHE_FLASH_ATTR
+glib_draw_line_smooth(const struct glib_vec2 from, const struct glib_vec2 to) {
+    // y = ax + b
+    // -> a = (y2 - y1) / (x2 - x1)
+    //    b = (x2y1 - x1y2) / (x2 - x1)
+    float a = (float)(to.y - from.y) / (float)(to.x - from.x);
+    float b = (float)(to.x * from.y - from.x * to.y) / (float)(to.x - from.x);
+
+    struct glib_window region;
+    if (to.x > from.x) {
+        region.x_left = from.x;
+        region.x_right = to.x;
+    } else {
+        region.x_left = to.x;
+        region.x_right = from.x;
+    }
+    if (to.y > from.y) {
+        region.y_top = from.y;
+        region.y_bottom = to.y;
+    } else {
+        region.y_top = to.y;
+        region.y_bottom = from.y;
+    }
+
+    float y;
+    int16_t i = 0;
+    for (i = region.x_left; i <= region.x_right; ++i) {
+        y = a * i + b;
+        // TODO: decimal etc
+    }
+}
+
+
+void ICACHE_FLASH_ATTR
 glib_draw_rect(const struct glib_window *const border, const uint32_t pattern, const uint8_t fill) {
     uint16_t height = border->y_bottom - border->y_top;
     uint16_t width = border->x_right - border->x_left;
@@ -244,7 +277,7 @@ glib_draw_rect(const struct glib_window *const border, const uint32_t pattern, c
                                        (height + GLIB_PIX_INT32 - 1) / GLIB_PIX_INT32;
 
     uint32_t *const temp = (uint32_t *)os_malloc(size * sizeof(uint32_t));
-    uint16_t cidx;
+    int16_t cidx;
     for (cidx = 0; cidx < size; ++cidx)
         temp[cidx] = pattern;
 

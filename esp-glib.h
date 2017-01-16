@@ -88,6 +88,14 @@ struct glib_window_phy {
 };
 
 /**
+ * @brief The glib_vec2 struct
+ */
+struct glib_vec2 {
+    int16_t x;
+    int16_t y;
+};
+
+/**
  * text draw mode
  */
 typedef enum {
