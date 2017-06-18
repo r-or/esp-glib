@@ -43,7 +43,9 @@ glib_fb2gram();                     // push framebuffer to display graphics RAM 
 ```
 \* see https://en.wikipedia.org/wiki/Typeface#Font_metrics
 
-Fonts and assets (bitmaps) can be created with a bitmap font converter such as [andryblack's](https://github.com/andryblack/fontbuilder) fontbuilder and converted to greyscale via 'png2gs.py' in tools/.
+Fonts and assets (bitmaps) can be created with a bitmap font converter such as [andryblack's](https://github.com/andryblack/fontbuilder) fontbuilder* and converted to greyscale via 'png2gs.py' in tools/.
+
+\* There is a [fork](https://github.com/r-or/fontbuilder) which adds the option to specify freetype hinting algorithm if you're interested.
 
 [Sample project using this library/driver](https://github.com/r-or/esp-glib-example)
 
