@@ -26,7 +26,7 @@ glib_init();
 glib_clear_fb(GLIB_OS_ALL);         // clear everything in framebuffer
 glib_set_textbox(NULL);             // set current textbox to whole screen
 glib_clear_tb_txt_state();          // clear current text positioning information
-glib_set_font(A_FONT_YOU_CONVERTED) // select font (as well as font size)
+glib_set_font(A_FONT_YOU_CONVERTED);// select font (as well as font size)
 glib_set_mode(GLIB_DM_FREE);        // set draw mode to free mode
 glib_print("ESP8266 here!",         // zero-terminated uint8_t array; utf8 escape: u+xxxx
            0,                       // x-coordinate (origin: top left)
@@ -45,7 +45,7 @@ glib_fb2gram();                     // push framebuffer to display graphics RAM 
 
 Fonts and assets (bitmaps) can be created with a bitmap font converter such as [andryblack's](https://github.com/andryblack/fontbuilder) fontbuilder* and converted to greyscale via 'png2gs.py' in tools/.
 
-\* There is a [fork](https://github.com/r-or/fontbuilder) which adds the option to specify freetype hinting algorithm if you're interested (branch: aa-options)
+\* I added the option to specify the freetype hinting algorithm ("Smoothing" box). Try "LCD horizontal" or "LCD vertical"; both look distinctively better than the standard option on a small LCD screen like the one we're using.
 
 [Sample project using this library/driver](https://github.com/r-or/esp-glib-example)
 
